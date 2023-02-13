@@ -4,7 +4,7 @@ use gl_generator::{GlobalGenerator, Registry};
 
 fn main() {
     let dest = env::var("OUT_DIR").unwrap();
-    let mut file = File::create(&Path::new(&dest).join("gl_bindings.rs")).unwrap();
+    let mut file = File::create(Path::new(&dest).join("gl_bindings.rs")).unwrap();
 
     Registry::new(
         gl_generator::Api::Gl,
