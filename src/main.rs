@@ -1,18 +1,26 @@
 mod shaders;
 
-use std::ffi::c_void;
+use std::f32::consts::PI;
+use std::ffi::{c_void, CString};
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::{mem, ptr};
 
 use glfw::{Action, Context, Key};
 
+use glm::Vec3;
 use image::DynamicImage;
+use nalgebra_glm as glm;
 use opengl::gl;
+
+use crate::shaders::Shader;
 
 const VERTEX_SHADER_SOURCE: &str = "resources/shaders/vertex.vert";
 
 const FRAGMENT_SHADER_SOURCE: &str = "resources/shaders/fragment.frag";
+
+#[allow(dead_code)]
+const RADIANS: f32 = PI / 180.0;
 
 fn main() {
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
@@ -40,7 +48,7 @@ fn main() {
     // Learn OGL: https://learnopengl.com/
     // Learn OGL RS: https://github.com/bwasty/learn-opengl-rs
     // ECS: https://www.youtube.com/watch?v=aKLntZcp27M
-    let shaders = shaders::Shader::new(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
+    let shaders = Shader::new(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
     #[allow(unused_unsafe)]
     let (program, vao, texture, texture_2) = unsafe {
         #[rustfmt::skip]
@@ -58,14 +66,12 @@ fn main() {
             1, 2, 3,  // Indexes of verts
         ];
 
-        let vbo = BufferBuilder::new::<f32>(&verticies);
+        let vbo = Buffer::create(&verticies);
 
-        let ebo = BufferBuilder::new::<i32>(&indices);
+        let ibo = Buffer::create(&indices);
 
-        let vb = VertexBuilder::new()
-            .vbo(vbo)
-            .ebo(ebo)
-            .vao()
+        let vb = VertexBuilder::default()
+            .vao(vbo, ibo)
             .attribute(3, gl::FLOAT)
             .attribute(3, gl::FLOAT)
             .attribute(2, gl::FLOAT);
@@ -88,10 +94,19 @@ fn main() {
         (shaders, vb.vao, texture.texture, texture_2.texture)
     };
 
+    let transform = CString::new("trans").unwrap();
+
     while !window.should_close() {
         handle_window_event(&mut window, &events);
 
         unsafe {
+            let mut trans = glm::Mat4::identity();
+            trans = glm::translate(&trans, &glm::vec3(0.5, -0.5, 0.0));
+            trans = glm::rotate(&trans, glfw.get_time() as f32, &glm::vec3(0.0, 0.0, 1.0));
+            trans = glm::scale(&trans, &Vec3::new(0.5, 0.5, 0.5));
+
+            let trans_loc = gl::GetUniformLocation(program.id, transform.as_ptr());
+            gl::UniformMatrix4fv(trans_loc, 1, gl::FALSE, trans.as_ptr());
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
@@ -176,41 +191,19 @@ impl TextureBuilder {
     }
 }
 
+#[derive(Default)]
 struct VertexBuilder {
     next_attribute: u32,
     last_size: u32,
     vao: u32,
-    ebo: u32,
-    vbo: u32,
 }
 
 impl VertexBuilder {
-    fn new() -> VertexBuilder {
-        let (vbo, vao, ebo) = (0, 0, 0);
-        VertexBuilder {
-            vao,
-            ebo,
-            vbo,
-            next_attribute: 0,
-            last_size: 0,
-        }
-    }
-
-    fn ebo(mut self, buffer: BufferBuilder) -> Self {
-        self.ebo = buffer.0;
-        self
-    }
-
-    fn vbo(mut self, buffer: BufferBuilder) -> Self {
-        self.vbo = buffer.0;
-        self
-    }
-
-    fn vao(mut self) -> Self {
+    fn vao(mut self, vbo: u32, ibo: u32) -> Self {
         unsafe {
             gl::CreateVertexArrays(1, &mut self.vao);
-            gl::VertexArrayVertexBuffer(self.vao, 0, self.vbo, 0, 8 * size_of(gl::FLOAT) as i32);
-            gl::VertexArrayElementBuffer(self.vao, self.ebo);
+            gl::VertexArrayVertexBuffer(self.vao, 0, vbo, 0, 8 * size_of(gl::FLOAT) as i32);
+            gl::VertexArrayElementBuffer(self.vao, ibo);
             self
         }
     }
@@ -234,10 +227,10 @@ impl VertexBuilder {
     }
 }
 
-struct BufferBuilder(u32);
+struct Buffer;
 
-impl BufferBuilder {
-    fn new<T>(array: &[T]) -> Self {
+impl Buffer {
+    fn create<T>(array: &[T]) -> u32 {
         unsafe {
             let mut buffer = 0;
             gl::CreateBuffers(1, &mut buffer);
@@ -247,7 +240,7 @@ impl BufferBuilder {
                 array.as_ptr() as *const c_void,
                 gl::DYNAMIC_STORAGE_BIT,
             );
-            BufferBuilder(buffer)
+            buffer
         }
     }
 }

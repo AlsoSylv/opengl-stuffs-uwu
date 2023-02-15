@@ -4,7 +4,7 @@ use std::{fs, ptr};
 use opengl::gl;
 
 pub struct Shader {
-    id: u32,
+    pub id: u32,
 }
 
 #[allow(dead_code)]
@@ -97,14 +97,14 @@ impl Shader {
         }
     }
 
-    fn set_int(&self, name: &str, value: i32) {
+    pub fn set_int(&self, name: &str, value: i32) {
         unsafe {
             let c_str = CString::new(name).unwrap();
             gl::Uniform1i(gl::GetUniformLocation(self.id, c_str.as_ptr()), value)
         }
     }
 
-    fn set_float(&self, name: &str, value: f32) {
+    pub fn set_float(&self, name: &str, value: f32) {
         unsafe {
             let c_str = CString::new(name).unwrap();
             gl::Uniform1f(gl::GetUniformLocation(self.id, c_str.as_ptr()), value)
