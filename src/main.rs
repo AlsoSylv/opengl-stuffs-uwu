@@ -8,7 +8,6 @@ use std::{mem, ptr};
 
 use glfw::{Action, Context, Key};
 
-use glm::Vec3;
 use image::DynamicImage;
 use nalgebra_glm as glm;
 use opengl::gl;
@@ -94,19 +93,32 @@ fn main() {
         (shaders, vb.vao, texture.texture, texture_2.texture)
     };
 
-    let transform = CString::new("trans").unwrap();
+    // let transform = CString::new("trans").unwrap();
 
     while !window.should_close() {
+        let (width, height) = window.get_size();
         handle_window_event(&mut window, &events);
 
         unsafe {
-            let mut trans = glm::Mat4::identity();
-            trans = glm::translate(&trans, &glm::vec3(0.5, -0.5, 0.0));
-            trans = glm::rotate(&trans, glfw.get_time() as f32, &glm::vec3(0.0, 0.0, 1.0));
-            trans = glm::scale(&trans, &Vec3::new(0.5, 0.5, 0.5));
+            // let ortho = glm::ortho(0.0, 800.0, 0.0, 600.0, 0.1, 140.0);
+            let proj = glm::perspective(45.0 * RADIANS, (width / height) as f32, 0.1, 100.0);
+            let mut model = glm::Mat4::identity();
+            model = glm::rotate(&model, -55.0 * RADIANS, &glm::vec3(1.0, 0.0, 0.0));
 
-            let trans_loc = gl::GetUniformLocation(program.id, transform.as_ptr());
-            gl::UniformMatrix4fv(trans_loc, 1, gl::FALSE, trans.as_ptr());
+            let mut view = glm::Mat4::identity();
+            view = glm::translate(&view, &glm::vec3(0.0, 0.0, -3.0));
+
+            let modelloc = gl::GetUniformLocation(program.id, CString::new("model").unwrap().as_ptr());
+            gl::UniformMatrix4fv(modelloc, 1, gl::FALSE, glm::value_ptr(&model).as_ptr());
+
+            let viewlloc = gl::GetUniformLocation(program.id, CString::new("view").unwrap().as_ptr());
+            gl::UniformMatrix4fv(viewlloc, 1, gl::FALSE, glm::value_ptr(&view).as_ptr());
+
+            let projlloc = gl::GetUniformLocation(program.id, CString::new("projection").unwrap().as_ptr());
+            gl::UniformMatrix4fv(projlloc, 1, gl::FALSE, glm::value_ptr(&proj).as_ptr());
+
+            // let trans_loc = gl::GetUniformLocation(program.id, transform.as_ptr());
+            // gl::UniformMatrix4fv(trans_loc, 1, gl::FALSE, model.as_ptr());
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
