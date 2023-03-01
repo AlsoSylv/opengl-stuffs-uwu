@@ -14,9 +14,9 @@ use opengl::gl;
 
 use crate::shaders::Shader;
 
-const VERTEX_SHADER_SOURCE: &str = "resources/shaders/vertex.vert";
+const VERTEX_SHADER_SOURCE: &str = "./resources/shaders/vertex.vert";
 
-const FRAGMENT_SHADER_SOURCE: &str = "resources/shaders/fragment.frag";
+const FRAGMENT_SHADER_SOURCE: &str = "./resources/shaders/fragment.frag";
 
 #[allow(dead_code)]
 const RADIANS: f32 = PI / 180.0;
@@ -75,8 +75,8 @@ fn main() {
             .attribute(3, gl::FLOAT)
             .attribute(2, gl::FLOAT);
 
-        let img = image::open(Path::new("resources\\textures\\wall.jpg")).unwrap();
-        let img_2 = image::open(Path::new("resources\\textures\\awesomeface.png")).unwrap();
+        let img = image::open(Path::new("./resources/textures/wall.jpg")).unwrap();
+        let img_2 = image::open(Path::new("./resources/textures/awesomeface.png")).unwrap();
 
         let texture = TextureBuilder::new(img, gl::RGB, gl::RGB8)
             .texture_paramater_i(gl::TEXTURE_WRAP_S, gl::MIRRORED_REPEAT)
