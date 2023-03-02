@@ -88,26 +88,40 @@ impl Shader {
     }
 
     fn set_bool(&self, name: &str, value: bool) {
-        unsafe {
-            let c_str = CString::new(name).unwrap();
-            gl::Uniform1i(
-                gl::GetUniformLocation(self.id, c_str.as_ptr()),
-                value as i32,
-            )
-        }
+        self.set_int(name, value as i32)
     }
 
     pub fn set_int(&self, name: &str, value: i32) {
         unsafe {
-            let c_str = CString::new(name).unwrap();
-            gl::Uniform1i(gl::GetUniformLocation(self.id, c_str.as_ptr()), value)
+            let location = self.uniform_location(name);
+            gl::Uniform1i(location, value)
         }
     }
 
     pub fn set_float(&self, name: &str, value: f32) {
         unsafe {
-            let c_str = CString::new(name).unwrap();
-            gl::Uniform1f(gl::GetUniformLocation(self.id, c_str.as_ptr()), value)
+            let location = self.uniform_location(name);
+            gl::Uniform1f(location, value)
+        }
+    }
+
+    pub fn uniform_matrix_4fv(
+        &self,
+        name: &str,
+        count: i32,
+        transpose: gl::types::GLboolean,
+        value: *const f32,
+    ) {
+        unsafe {
+            let location = self.uniform_location(name);
+            gl::UniformMatrix4fv(location, count, transpose, value);
+        }
+    }
+
+    fn uniform_location(&self, name: &str) -> i32 {
+        unsafe {
+            let name = CString::new(name).unwrap();
+            gl::GetUniformLocation(self.id, name.as_ptr())
         }
     }
 }

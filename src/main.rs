@@ -1,18 +1,19 @@
 mod shaders;
+mod textures;
 
 use std::f32::consts::PI;
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::{mem, ptr};
 
 use glfw::{Action, Context, Key};
 
-use image::DynamicImage;
 use nalgebra_glm as glm;
 use opengl::gl;
 
-use crate::shaders::Shader;
+use shaders::Shader;
+use textures::TextureBuilder;
 
 const VERTEX_SHADER_SOURCE: &str = "./resources/shaders/vertex.vert";
 
@@ -52,7 +53,7 @@ fn main() {
     let (program, vao, texture, texture_2) = unsafe {
         #[rustfmt::skip]
         let verticies: [f32; 32] = [
-            // Positions     | Colors RGB     | Texture coords
+            // Positions      | Colors RGB    | Texture coords
              0.5,  0.5, 0.0,  1.0, 0.0, 0.0,  1.0, 1.0,  // 0
              0.5, -0.5, 0.0,  0.0, 1.0, 0.0,  1.0, 0.0,  // 1
             -0.5, -0.5, 0.0,  0.0, 0.0, 1.0,  0.0, 0.0,  // 2
@@ -65,12 +66,10 @@ fn main() {
             1, 2, 3,  // Indexes of verts
         ];
 
-        let vbo = Buffer::create(&verticies);
-
-        let ibo = Buffer::create(&indices);
+        let (vao, buffer, ind_size) = Buffer::create_shared_buffer(&verticies, &indices);
 
         let vb = VertexBuilder::default()
-            .vao(vbo, ibo)
+            .vao(vao, buffer, ind_size)
             .attribute(3, gl::FLOAT)
             .attribute(3, gl::FLOAT)
             .attribute(2, gl::FLOAT);
@@ -108,17 +107,12 @@ fn main() {
             let mut view = glm::Mat4::identity();
             view = glm::translate(&view, &glm::vec3(0.0, 0.0, -3.0));
 
-            let modelloc = gl::GetUniformLocation(program.id, CString::new("model").unwrap().as_ptr());
-            gl::UniformMatrix4fv(modelloc, 1, gl::FALSE, glm::value_ptr(&model).as_ptr());
+            program.uniform_matrix_4fv("model", 1, gl::FALSE, glm::value_ptr(&model).as_ptr());
 
-            let viewlloc = gl::GetUniformLocation(program.id, CString::new("view").unwrap().as_ptr());
-            gl::UniformMatrix4fv(viewlloc, 1, gl::FALSE, glm::value_ptr(&view).as_ptr());
+            program.uniform_matrix_4fv("view", 1, gl::FALSE, glm::value_ptr(&view).as_ptr());
 
-            let projlloc = gl::GetUniformLocation(program.id, CString::new("projection").unwrap().as_ptr());
-            gl::UniformMatrix4fv(projlloc, 1, gl::FALSE, glm::value_ptr(&proj).as_ptr());
+            program.uniform_matrix_4fv("projection", 1, gl::FALSE, glm::value_ptr(&proj).as_ptr());
 
-            // let trans_loc = gl::GetUniformLocation(program.id, transform.as_ptr());
-            // gl::UniformMatrix4fv(trans_loc, 1, gl::FALSE, model.as_ptr());
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
@@ -134,75 +128,6 @@ fn main() {
     }
 }
 
-struct TextureBuilder {
-    texture: u32,
-    image: DynamicImage,
-    internal_format: gl::types::GLenum,
-    internalformat: gl::types::GLenum,
-}
-
-#[allow(dead_code)]
-impl TextureBuilder {
-    fn new(
-        image: DynamicImage,
-        internal_format: gl::types::GLenum,
-        internalformat: gl::types::GLenum,
-    ) -> TextureBuilder {
-        unsafe {
-            let mut texture = 0;
-            gl::CreateTextures(gl::TEXTURE_2D, 1, &mut texture);
-            TextureBuilder {
-                texture,
-                image,
-                internal_format,
-                internalformat,
-            }
-        }
-    }
-
-    fn texture_storage(self, levels: i32) -> Self {
-        unsafe {
-            gl::TextureStorage2D(
-                self.texture,
-                levels,
-                self.internalformat,
-                self.image.width() as i32,
-                self.image.height() as i32,
-            );
-            self
-        }
-    }
-
-    fn sub_texture(self, x_offset: i32, y_offset: i32) -> Self {
-        unsafe {
-            gl::TextureSubImage2D(
-                self.texture,
-                0,
-                x_offset,
-                y_offset,
-                self.image.width() as i32,
-                self.image.height() as i32,
-                self.internal_format,
-                gl::UNSIGNED_BYTE,
-                self.image.as_bytes().as_ptr() as *const c_void,
-            );
-            self
-        }
-    }
-
-    fn texture_paramater_i(self, p_name: gl::types::GLenum, param: gl::types::GLenum) -> Self {
-        unsafe {
-            gl::TextureParameteri(self.texture, p_name, param as i32);
-            self
-        }
-    }
-
-    fn flip(mut self) -> Self {
-        self.image = self.image.flipv();
-        self
-    }
-}
-
 #[derive(Default)]
 struct VertexBuilder {
     next_attribute: u32,
@@ -211,11 +136,12 @@ struct VertexBuilder {
 }
 
 impl VertexBuilder {
-    fn vao(mut self, vbo: u32, ibo: u32) -> Self {
+    fn vao(mut self, mut vao: u32, buffer: u32, size: isize) -> Self {
         unsafe {
-            gl::CreateVertexArrays(1, &mut self.vao);
-            gl::VertexArrayVertexBuffer(self.vao, 0, vbo, 0, 8 * size_of(gl::FLOAT) as i32);
-            gl::VertexArrayElementBuffer(self.vao, ibo);
+            gl::CreateVertexArrays(1, &mut vao);
+            gl::VertexArrayVertexBuffer(vao, 0, buffer, size, 8 * size_of(gl::FLOAT) as i32);
+            gl::VertexArrayElementBuffer(vao, buffer);
+            self.vao = vao;
             self
         }
     }
@@ -242,17 +168,37 @@ impl VertexBuilder {
 struct Buffer;
 
 impl Buffer {
-    fn create<T>(array: &[T]) -> u32 {
+    fn create(size: isize) -> u32 {
         unsafe {
             let mut buffer = 0;
             gl::CreateBuffers(1, &mut buffer);
-            gl::NamedBufferStorage(
-                buffer,
-                (array.len() * mem::size_of::<T>()) as isize,
-                array.as_ptr() as *const c_void,
-                gl::DYNAMIC_STORAGE_BIT,
-            );
+            gl::NamedBufferStorage(buffer, size, ptr::null(), gl::DYNAMIC_STORAGE_BIT);
             buffer
+        }
+    }
+
+    fn create_shared_buffer<A, B>(verticies: &[A], indicies: &[B]) -> (u32, u32, isize) {
+        unsafe {
+            let mut alignment = 0;
+            gl::GetIntegerv(gl::UNIFORM_BUFFER_OFFSET_ALIGNMENT, &mut alignment);
+
+            let vao: u32 = 0;
+
+            let ind_size = (indicies.len() * mem::size_of::<B>()) as isize;
+            let vrt_size = (verticies.len() * mem::size_of::<A>()) as isize;
+
+            let buffer = Buffer::create(ind_size + vrt_size);
+
+            Buffer::named_buffer_sub_data(indicies, buffer, 0, ind_size);
+            Buffer::named_buffer_sub_data(verticies, buffer, ind_size, vrt_size);
+
+            (vao, buffer, ind_size)
+        }
+    }
+
+    fn named_buffer_sub_data<T>(array: &[T], buffer: u32, offset: isize, size: isize) {
+        unsafe {
+            gl::NamedBufferSubData(buffer, offset, size, array.as_ptr() as *const c_void);
         }
     }
 }
