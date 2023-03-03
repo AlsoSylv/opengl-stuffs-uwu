@@ -4,7 +4,7 @@ use image::DynamicImage;
 use opengl::gl;
 
 pub(crate) struct TextureBuilder {
-    pub texture: u32,
+    texture: u32,
     image: DynamicImage,
     internal_format: gl::types::GLenum,
     internalformat: gl::types::GLenum,
@@ -69,5 +69,9 @@ impl TextureBuilder {
     pub fn flip(mut self) -> Self {
         self.image = self.image.flipv();
         self
+    }
+
+    pub fn build(&self) -> u32 {
+        self.texture
     }
 }

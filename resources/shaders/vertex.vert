@@ -6,12 +6,11 @@ layout (location = 2) in vec2 aTexCoord;
 out vec3 ourColor;
 out vec2 TexCoord;
 
-uniform float xOffset;
-uniform mat4 trans;
-
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
+layout(std140, binding = 0) uniform MatrixBlock {
+    mat4 projection;
+    mat4 model;
+    mat4 view;
+};
 
 void main()
 {

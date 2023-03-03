@@ -2,7 +2,7 @@ mod shaders;
 mod textures;
 
 use std::f32::consts::PI;
-use std::ffi::c_void;
+use std::ffi::{c_void, CString};
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::{mem, ptr};
@@ -50,7 +50,7 @@ fn main() {
     // ECS: https://www.youtube.com/watch?v=aKLntZcp27M
     let shaders = Shader::new(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
     #[allow(unused_unsafe)]
-    let (program, vao, texture, texture_2) = unsafe {
+    let (program, vao, texture, texture_2, mut ubo) = unsafe {
         #[rustfmt::skip]
         let verticies: [f32; 32] = [
             // Positions      | Colors RGB    | Texture coords
@@ -68,11 +68,12 @@ fn main() {
 
         let (vao, buffer, ind_size) = Buffer::create_shared_buffer(&verticies, &indices);
 
-        let vb = VertexBuilder::default()
-            .vao(vao, buffer, ind_size)
+        let vao = VertexBuilder::default()
+            .new(vao, buffer, ind_size)
             .attribute(3, gl::FLOAT)
             .attribute(3, gl::FLOAT)
-            .attribute(2, gl::FLOAT);
+            .attribute(2, gl::FLOAT)
+            .build();
 
         let img = image::open(Path::new("./resources/textures/wall.jpg")).unwrap();
         let img_2 = image::open(Path::new("./resources/textures/awesomeface.png")).unwrap();
@@ -83,13 +84,17 @@ fn main() {
             .texture_paramater_i(gl::TEXTURE_MIN_FILTER, gl::NEAREST)
             .texture_paramater_i(gl::TEXTURE_MAG_FILTER, gl::LINEAR)
             .texture_storage(1)
-            .sub_texture(0, 0);
+            .sub_texture(0, 0)
+            .build();
 
         let texture_2 = TextureBuilder::new(img_2, gl::RGBA, gl::RGBA8)
             .texture_storage(1)
-            .sub_texture(0, 0);
+            .sub_texture(0, 0)
+            .build();
 
-        (shaders, vb.vao, texture.texture, texture_2.texture)
+        let ubo = UBO::new(shaders.id, "MatrixBlock", 3 * mem::size_of::<glm::Mat4>());
+
+        (shaders, vao, texture, texture_2, ubo)
     };
 
     // let transform = CString::new("trans").unwrap();
@@ -98,23 +103,23 @@ fn main() {
         let (width, height) = window.get_size();
         handle_window_event(&mut window, &events);
 
+        let proj = glm::perspective(45.0 * RADIANS, (width / height) as f32, 0.1, 100.0);
+
+        let mut model = glm::Mat4::identity();
+        model = glm::rotate(&model, -55.0 * RADIANS, &glm::vec3(1.0, 0.0, 0.0));
+
+        let mut view = glm::Mat4::identity();
+        view = glm::translate(&view, &glm::vec3(0.0, 0.0, -3.0));
+
+        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&proj));
+        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&model));
+        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&view));
+
         unsafe {
-            // let ortho = glm::ortho(0.0, 800.0, 0.0, 600.0, 0.1, 140.0);
-            let proj = glm::perspective(45.0 * RADIANS, (width / height) as f32, 0.1, 100.0);
-            let mut model = glm::Mat4::identity();
-            model = glm::rotate(&model, -55.0 * RADIANS, &glm::vec3(1.0, 0.0, 0.0));
-
-            let mut view = glm::Mat4::identity();
-            view = glm::translate(&view, &glm::vec3(0.0, 0.0, -3.0));
-
-            program.uniform_matrix_4fv("model", 1, gl::FALSE, glm::value_ptr(&model).as_ptr());
-
-            program.uniform_matrix_4fv("view", 1, gl::FALSE, glm::value_ptr(&view).as_ptr());
-
-            program.uniform_matrix_4fv("projection", 1, gl::FALSE, glm::value_ptr(&proj).as_ptr());
-
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
+
+            ubo.bind();
 
             gl::BindTextures(0, 2, [texture, texture_2].as_ptr());
 
@@ -122,6 +127,8 @@ fn main() {
             gl::BindVertexArray(vao);
             gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
         }
+
+        ubo.clear();
 
         window.swap_buffers();
         glfw.poll_events();
@@ -136,7 +143,7 @@ struct VertexBuilder {
 }
 
 impl VertexBuilder {
-    fn vao(mut self, mut vao: u32, buffer: u32, size: isize) -> Self {
+    fn new(mut self, mut vao: u32, buffer: u32, size: isize) -> Self {
         unsafe {
             gl::CreateVertexArrays(1, &mut vao);
             gl::VertexArrayVertexBuffer(vao, 0, buffer, size, 8 * size_of(gl::FLOAT) as i32);
@@ -162,6 +169,67 @@ impl VertexBuilder {
             self.next_attribute += 1;
             self
         }
+    }
+
+    fn build(self) -> u32 {
+        self.vao
+    }
+}
+
+struct UBO {
+    ubo: u32,
+    offset: isize,
+    size: isize,
+}
+
+impl UBO {
+    fn new(shader: u32, ubo_name: &str, size: usize) -> UBO {
+        unsafe {
+            let size = size as isize;
+            let ubo_name = CString::new(ubo_name).unwrap();
+            let index = gl::GetUniformBlockIndex(shader, ubo_name.as_ptr());
+
+            gl::UniformBlockBinding(shader, index, 0);
+
+            let ubo = Buffer::create(size);
+            gl::BindBuffer(gl::UNIFORM_BUFFER, ubo);
+
+            gl::BindBufferRange(gl::UNIFORM_BUFFER, index, ubo, 0, size);
+            UBO {
+                ubo,
+                offset: 0,
+                size,
+            }
+        }
+    }
+
+    fn next_attribute<A, B>(&mut self, data: &[B]) -> &Self {
+        unsafe {
+            let size = mem::size_of::<A>() as isize;
+            if size + self.offset > self.size {
+                panic!("Too big")
+            }
+            gl::BufferSubData(
+                gl::UNIFORM_BUFFER,
+                self.offset,
+                size,
+                data.as_ptr() as *const c_void,
+            );
+            self.offset += size;
+            self
+        }
+    }
+
+    fn bind(&self) -> &Self {
+        unsafe {
+            gl::BindBuffer(gl::UNIFORM_BUFFER, self.ubo);
+            &self
+        }
+    }
+
+    fn clear(&mut self) -> &Self {
+        self.offset = 0;
+        self
     }
 }
 
