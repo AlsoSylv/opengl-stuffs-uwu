@@ -1,3 +1,4 @@
+mod camera;
 mod shaders;
 mod textures;
 
@@ -9,6 +10,7 @@ use std::{mem, ptr};
 
 use glfw::{Action, Context, Key};
 
+use glm::Mat4;
 use nalgebra_glm as glm;
 use opengl::gl;
 
@@ -42,7 +44,9 @@ fn main() {
 
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const c_void);
 
-    framebuffer_size_callback(1280, 720);
+    let mut proj = Mat4::identity();
+
+    framebuffer_size_callback(1280, 720, &mut proj);
 
     // Modern OGL: https://github.com/fendevel/Guide-to-Modern-OpenGL-Functions#glnamedbufferdata
     // Learn OGL: https://learnopengl.com/
@@ -52,25 +56,55 @@ fn main() {
     #[allow(unused_unsafe)]
     let (program, vao, texture, texture_2, mut ubo) = unsafe {
         #[rustfmt::skip]
-        let verticies: [f32; 32] = [
-            // Positions      | Colors RGB    | Texture coords
-             0.5,  0.5, 0.0,  1.0, 0.0, 0.0,  1.0, 1.0,  // 0
-             0.5, -0.5, 0.0,  0.0, 1.0, 0.0,  1.0, 0.0,  // 1
-            -0.5, -0.5, 0.0,  0.0, 0.0, 1.0,  0.0, 0.0,  // 2
-            -0.5,  0.5, 0.0,  0.5, 0.0, 0.5,  0.0, 1.0,  // 3
+        let verticies: [f32; 80] = [
+            // Positions      | Texture coords
+             0.5,  0.5, -0.5,  1.0, 1.0,  // 0
+             0.5, -0.5, -0.5,  1.0, 0.0,  // 1
+            -0.5, -0.5, -0.5,  0.0, 0.0,  // 2
+            -0.5,  0.5, -0.5,  0.0, 1.0,  // 3
+
+            -0.5,  0.5,  0.5,  1.0, 0.0,  // 4
+            -0.5,  0.5, -0.5,  1.0, 1.0,  // 5
+            -0.5, -0.5, -0.5,  0.0, 1.0,  // 6
+            -0.5, -0.5,  0.5,  0.0, 0.0,  // 7
+
+             0.5, -0.5,  0.5,  1.0, 0.0,  // 8
+             0.5,  0.5,  0.5,  1.0, 1.0,  // 9
+            -0.5,  0.5,  0.5,  0.0, 1.0,  // 10
+
+             0.5,  0.5,  0.5,  1.0, 0.0,  // 11
+             0.5, -0.5, -0.5,  0.0, 1.0,  // 12
+             0.5, -0.5,  0.5,  0.0, 0.0,  // 13
+
+             0.5, -0.5, -0.5,  1.0, 1.0,  // 14
+            -0.5,  0.5,  0.5,  0.0, 0.0,  // 15
         ];
 
         #[rustfmt::skip]
-        let indices: [i32; 6] = [
+        let indices: [i32; 36] = [
             0, 1, 3,  // Indexes of verts
             1, 2, 3,  // Indexes of verts
+
+            4, 5, 6,
+            6, 7, 4,
+
+            7, 8, 9,
+            9, 10, 7,
+
+            11, 0, 12,
+            12, 13, 11,
+
+            6, 14, 8,
+            8, 7, 6,
+
+            3, 0, 11,
+            11, 15, 3
         ];
 
         let (vao, buffer, ind_size) = Buffer::create_shared_buffer(&verticies, &indices);
 
         let vao = VertexBuilder::default()
             .new(vao, buffer, ind_size)
-            .attribute(3, gl::FLOAT)
             .attribute(3, gl::FLOAT)
             .attribute(2, gl::FLOAT)
             .build();
@@ -94,30 +128,54 @@ fn main() {
 
         let ubo = UBO::new(shaders.id, "MatrixBlock", 3 * mem::size_of::<glm::Mat4>());
 
+        gl::Enable(gl::DEPTH_TEST);
+
         (shaders, vao, texture, texture_2, ubo)
     };
 
-    // let transform = CString::new("trans").unwrap();
+    let cube_positions = [
+        glm::vec3(0.0, 0.0, 0.0),
+        glm::vec3(2.0, 5.0, -15.0),
+        glm::vec3(-1.5, -2.2, -2.5),
+        glm::vec3(-3.8, -2.0, -12.3),
+        glm::vec3(2.4, -0.4, -3.5),
+        glm::vec3(-1.7, 3.0, -7.5),
+        glm::vec3(1.3, -2.0, -2.5),
+        glm::vec3(1.5, 2.0, -2.5),
+        glm::vec3(1.5, 0.2, -1.5),
+        glm::vec3(-1.3, 1.0, -1.5),
+    ];
 
     while !window.should_close() {
-        let (width, height) = window.get_size();
-        handle_window_event(&mut window, &events);
+        handle_window_event(&mut window, &events, &mut proj);
 
-        let proj = glm::perspective(45.0 * RADIANS, (width / height) as f32, 0.1, 100.0);
+        let camera_pos = glm::vec3(0.0, 0.0, 3.0);
+        let camera_target = glm::vec3(0.0, 0.0, 0.0);
+        let camera_direction = glm::normalize(&(camera_pos - camera_target));
 
-        let mut model = glm::Mat4::identity();
-        model = glm::rotate(&model, -55.0 * RADIANS, &glm::vec3(1.0, 0.0, 0.0));
+        let up = glm::vec3(0.0, 1.0, 0.0);
+        let camera_right = glm::normalize(&glm::cross(&up, &camera_direction));
 
-        let mut view = glm::Mat4::identity();
-        view = glm::translate(&view, &glm::vec3(0.0, 0.0, -3.0));
+        let camera_up = glm::cross(&camera_direction, &camera_right);
 
-        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&proj));
-        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&model));
-        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&view));
+        const RADIUS: f32 = 10.0;
+        let cam_x = glfw.get_time().sin() as f32 * RADIUS;
+        let cam_z = glfw.get_time().cos() as f32 * RADIUS;
+
+        // let mut view = glm::Mat4::identity();
+        let view = glm::look_at(
+            &glm::vec3(cam_x, 0.0, cam_z),
+            &glm::vec3(0.0, 0.0, 0.0),
+            &glm::vec3(0.0, 1.0, 0.0),
+        );
+        // view = glm::translate(&view, &glm::vec3(0.0, 0.0, -3.0));
+
+        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&proj), 0);
+        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&view), 1);
 
         unsafe {
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
             ubo.bind();
 
@@ -125,10 +183,16 @@ fn main() {
 
             program.use_program();
             gl::BindVertexArray(vao);
-            gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
-        }
+            for x in 0..10 {
+                let mut model = glm::Mat4::identity();
+                model = glm::translate(&model, &cube_positions[x]);
+                let angle = 20.0 * x as f32;
+                model = glm::rotate(&model, angle * RADIANS, &glm::vec3(1.0, 0.3, 0.5));
 
-        ubo.clear();
+                ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&model), 2);
+                gl::DrawElements(gl::TRIANGLES, 36, gl::UNSIGNED_INT, ptr::null());
+            }
+        }
 
         window.swap_buffers();
         glfw.poll_events();
@@ -146,7 +210,7 @@ impl VertexBuilder {
     fn new(mut self, mut vao: u32, buffer: u32, size: isize) -> Self {
         unsafe {
             gl::CreateVertexArrays(1, &mut vao);
-            gl::VertexArrayVertexBuffer(vao, 0, buffer, size, 8 * size_of(gl::FLOAT) as i32);
+            gl::VertexArrayVertexBuffer(vao, 0, buffer, size, 5 * size_of(gl::FLOAT) as i32);
             gl::VertexArrayElementBuffer(vao, buffer);
             self.vao = vao;
             self
@@ -178,8 +242,6 @@ impl VertexBuilder {
 
 struct UBO {
     ubo: u32,
-    offset: isize,
-    size: isize,
 }
 
 impl UBO {
@@ -195,27 +257,19 @@ impl UBO {
             gl::BindBuffer(gl::UNIFORM_BUFFER, ubo);
 
             gl::BindBufferRange(gl::UNIFORM_BUFFER, index, ubo, 0, size);
-            UBO {
-                ubo,
-                offset: 0,
-                size,
-            }
+            UBO { ubo }
         }
     }
 
-    fn next_attribute<A, B>(&mut self, data: &[B]) -> &Self {
+    fn next_attribute<A, B>(&mut self, data: &[B], offset: isize) -> &Self {
         unsafe {
             let size = mem::size_of::<A>() as isize;
-            if size + self.offset > self.size {
-                panic!("Too big")
-            }
             gl::BufferSubData(
                 gl::UNIFORM_BUFFER,
-                self.offset,
+                offset * size,
                 size,
                 data.as_ptr() as *const c_void,
             );
-            self.offset += size;
             self
         }
     }
@@ -225,11 +279,6 @@ impl UBO {
             gl::BindBuffer(gl::UNIFORM_BUFFER, self.ubo);
             &self
         }
-    }
-
-    fn clear(&mut self) -> &Self {
-        self.offset = 0;
-        self
     }
 }
 
@@ -271,22 +320,29 @@ impl Buffer {
     }
 }
 
-fn handle_window_event(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>) {
+fn handle_window_event(
+    window: &mut glfw::Window,
+    events: &Receiver<(f64, glfw::WindowEvent)>,
+    proj: &mut Mat4,
+) {
     for (_, events) in glfw::flush_messages(events) {
         match events {
             glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
                 window.set_should_close(true)
             }
             glfw::WindowEvent::FramebufferSize(width, height) => {
-                framebuffer_size_callback(width, height)
+                framebuffer_size_callback(width, height, proj)
             }
             _ => {}
         }
     }
 }
 
-fn framebuffer_size_callback(width: i32, height: i32) {
-    unsafe { gl::Viewport(0, 0, width, height) }
+fn framebuffer_size_callback(width: i32, height: i32, proj: &mut Mat4) {
+    unsafe {
+        gl::Viewport(0, 0, width, height);
+        *proj = glm::perspective(width as f32 / height as f32, 45.0 * RADIANS, 0.1, 100.0);
+    }
 }
 
 fn size_of(glenum: gl::types::GLenum) -> u32 {
