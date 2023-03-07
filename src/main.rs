@@ -1,9 +1,11 @@
+mod buffers;
 mod camera;
 mod shaders;
 mod textures;
 
+use std::collections::HashSet;
 use std::f32::consts::PI;
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::{mem, ptr};
@@ -14,6 +16,8 @@ use glm::Mat4;
 use nalgebra_glm as glm;
 use opengl::gl;
 
+use buffers::{Buffer, Ubo, VertexBuilder};
+use camera::Camera;
 use shaders::Shader;
 use textures::TextureBuilder;
 
@@ -44,9 +48,7 @@ fn main() {
 
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const c_void);
 
-    let mut proj = Mat4::identity();
-
-    framebuffer_size_callback(1280, 720, &mut proj);
+    let mut proj = glm::perspective(1280.0 / 720.0, 45.0 * RADIANS, 0.1, 100.0);
 
     // Modern OGL: https://github.com/fendevel/Guide-to-Modern-OpenGL-Functions#glnamedbufferdata
     // Learn OGL: https://learnopengl.com/
@@ -55,6 +57,8 @@ fn main() {
     let shaders = Shader::new(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
     #[allow(unused_unsafe)]
     let (program, vao, texture, texture_2, mut ubo) = unsafe {
+        gl::Viewport(0, 0, 1280, 720);
+
         #[rustfmt::skip]
         let verticies: [f32; 80] = [
             // Positions      | Texture coords
@@ -104,7 +108,7 @@ fn main() {
         let (vao, buffer, ind_size) = Buffer::create_shared_buffer(&verticies, &indices);
 
         let vao = VertexBuilder::default()
-            .new(vao, buffer, ind_size)
+            .bind_buffers(vao, buffer, ind_size)
             .attribute(3, gl::FLOAT)
             .attribute(2, gl::FLOAT)
             .build();
@@ -126,7 +130,7 @@ fn main() {
             .sub_texture(0, 0)
             .build();
 
-        let ubo = UBO::new(shaders.id, "MatrixBlock", 3 * mem::size_of::<glm::Mat4>());
+        let ubo = Ubo::new(shaders.id, "MatrixBlock", 3 * mem::size_of::<glm::Mat4>());
 
         gl::Enable(gl::DEPTH_TEST);
 
@@ -145,33 +149,21 @@ fn main() {
         glm::vec3(1.5, 0.2, -1.5),
         glm::vec3(-1.3, 1.0, -1.5),
     ];
+    let mut last_frame = 0.0;
 
-    while !window.should_close() {
-        handle_window_event(&mut window, &events, &mut proj);
+    let camera = Camera::new();
 
-        let camera_pos = glm::vec3(0.0, 0.0, 3.0);
-        let camera_target = glm::vec3(0.0, 0.0, 0.0);
-        let camera_direction = glm::normalize(&(camera_pos - camera_target));
+    let mut app = Application::new(&mut window, &events, camera);
 
-        let up = glm::vec3(0.0, 1.0, 0.0);
-        let camera_right = glm::normalize(&glm::cross(&up, &camera_direction));
+    while !app.should_close() {
+        let current_time = glfw.get_time();
+        let delta = current_time - last_frame;
+        last_frame = current_time;
 
-        let camera_up = glm::cross(&camera_direction, &camera_right);
+        app.handle_window_event(&mut proj, delta as f32);
 
-        const RADIUS: f32 = 10.0;
-        let cam_x = glfw.get_time().sin() as f32 * RADIUS;
-        let cam_z = glfw.get_time().cos() as f32 * RADIUS;
-
-        // let mut view = glm::Mat4::identity();
-        let view = glm::look_at(
-            &glm::vec3(cam_x, 0.0, cam_z),
-            &glm::vec3(0.0, 0.0, 0.0),
-            &glm::vec3(0.0, 1.0, 0.0),
-        );
-        // view = glm::translate(&view, &glm::vec3(0.0, 0.0, -3.0));
-
-        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&proj), 0);
-        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&view), 1);
+        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&proj));
+        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&app.view()));
 
         unsafe {
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
@@ -183,171 +175,98 @@ fn main() {
 
             program.use_program();
             gl::BindVertexArray(vao);
-            for x in 0..10 {
+            for (x, position) in cube_positions.iter().enumerate() {
                 let mut model = glm::Mat4::identity();
-                model = glm::translate(&model, &cube_positions[x]);
+                model = glm::translate(&model, position);
                 let angle = 20.0 * x as f32;
                 model = glm::rotate(&model, angle * RADIANS, &glm::vec3(1.0, 0.3, 0.5));
 
-                ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&model), 2);
+                ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&model));
                 gl::DrawElements(gl::TRIANGLES, 36, gl::UNSIGNED_INT, ptr::null());
+                ubo.reduce_offset::<glm::Mat4>();
             }
         }
+        ubo.clear();
 
-        window.swap_buffers();
+        app.swap_buffers();
         glfw.poll_events();
     }
 }
 
-#[derive(Default)]
-struct VertexBuilder {
-    next_attribute: u32,
-    last_size: u32,
-    vao: u32,
+struct Application<'a> {
+    window: &'a mut glfw::Window,
+    events: &'a Receiver<(f64, glfw::WindowEvent)>,
+    camera: Camera,
+    keys: HashSet<Key>,
 }
 
-impl VertexBuilder {
-    fn new(mut self, mut vao: u32, buffer: u32, size: isize) -> Self {
-        unsafe {
-            gl::CreateVertexArrays(1, &mut vao);
-            gl::VertexArrayVertexBuffer(vao, 0, buffer, size, 5 * size_of(gl::FLOAT) as i32);
-            gl::VertexArrayElementBuffer(vao, buffer);
-            self.vao = vao;
-            self
+impl Application<'_> {
+    fn new<'a>(
+        window: &'a mut glfw::Window,
+        events: &'a Receiver<(f64, glfw::WindowEvent)>,
+        camera: Camera,
+    ) -> Application<'a> {
+        Application {
+            window,
+            events,
+            camera,
+            keys: HashSet::new(),
         }
     }
 
-    fn attribute(mut self, size: u32, _type: gl::types::GLenum) -> Self {
-        unsafe {
-            gl::EnableVertexArrayAttrib(self.vao, self.next_attribute);
-            gl::VertexArrayAttribFormat(
-                self.vao,
-                self.next_attribute,
-                size as i32,
-                _type,
-                gl::FALSE,
-                self.last_size * size_of(gl::FLOAT),
-            );
-            gl::VertexArrayAttribBinding(self.vao, self.next_attribute, 0);
-            self.last_size += size;
-            self.next_attribute += 1;
-            self
-        }
-    }
-
-    fn build(self) -> u32 {
-        self.vao
-    }
-}
-
-struct UBO {
-    ubo: u32,
-}
-
-impl UBO {
-    fn new(shader: u32, ubo_name: &str, size: usize) -> UBO {
-        unsafe {
-            let size = size as isize;
-            let ubo_name = CString::new(ubo_name).unwrap();
-            let index = gl::GetUniformBlockIndex(shader, ubo_name.as_ptr());
-
-            gl::UniformBlockBinding(shader, index, 0);
-
-            let ubo = Buffer::create(size);
-            gl::BindBuffer(gl::UNIFORM_BUFFER, ubo);
-
-            gl::BindBufferRange(gl::UNIFORM_BUFFER, index, ubo, 0, size);
-            UBO { ubo }
-        }
-    }
-
-    fn next_attribute<A, B>(&mut self, data: &[B], offset: isize) -> &Self {
-        unsafe {
-            let size = mem::size_of::<A>() as isize;
-            gl::BufferSubData(
-                gl::UNIFORM_BUFFER,
-                offset * size,
-                size,
-                data.as_ptr() as *const c_void,
-            );
-            self
-        }
-    }
-
-    fn bind(&self) -> &Self {
-        unsafe {
-            gl::BindBuffer(gl::UNIFORM_BUFFER, self.ubo);
-            &self
-        }
-    }
-}
-
-struct Buffer;
-
-impl Buffer {
-    fn create(size: isize) -> u32 {
-        unsafe {
-            let mut buffer = 0;
-            gl::CreateBuffers(1, &mut buffer);
-            gl::NamedBufferStorage(buffer, size, ptr::null(), gl::DYNAMIC_STORAGE_BIT);
-            buffer
-        }
-    }
-
-    fn create_shared_buffer<A, B>(verticies: &[A], indicies: &[B]) -> (u32, u32, isize) {
-        unsafe {
-            let mut alignment = 0;
-            gl::GetIntegerv(gl::UNIFORM_BUFFER_OFFSET_ALIGNMENT, &mut alignment);
-
-            let vao: u32 = 0;
-
-            let ind_size = (indicies.len() * mem::size_of::<B>()) as isize;
-            let vrt_size = (verticies.len() * mem::size_of::<A>()) as isize;
-
-            let buffer = Buffer::create(ind_size + vrt_size);
-
-            Buffer::named_buffer_sub_data(indicies, buffer, 0, ind_size);
-            Buffer::named_buffer_sub_data(verticies, buffer, ind_size, vrt_size);
-
-            (vao, buffer, ind_size)
-        }
-    }
-
-    fn named_buffer_sub_data<T>(array: &[T], buffer: u32, offset: isize, size: isize) {
-        unsafe {
-            gl::NamedBufferSubData(buffer, offset, size, array.as_ptr() as *const c_void);
-        }
-    }
-}
-
-fn handle_window_event(
-    window: &mut glfw::Window,
-    events: &Receiver<(f64, glfw::WindowEvent)>,
-    proj: &mut Mat4,
-) {
-    for (_, events) in glfw::flush_messages(events) {
-        match events {
-            glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
-                window.set_should_close(true)
+    fn handle_window_event(&mut self, proj: &mut Mat4, delta: f32) {
+        let speed = delta * 2.5;
+        for (_, events) in glfw::flush_messages(self.events) {
+            match events {
+                glfw::WindowEvent::Key(key, _, action, _) => match (key, action) {
+                    (Key::Escape, _) => self.window.set_should_close(true),
+                    (Key::W | Key::A | Key::S | Key::D, Action::Release) => {
+                        self.keys.remove(&key);
+                    }
+                    (Key::W | Key::A | Key::S | Key::D, _) => {
+                        self.keys.insert(key);
+                    }
+                    _ => (),
+                },
+                glfw::WindowEvent::FramebufferSize(width, height) => unsafe {
+                    gl::Viewport(0, 0, width, height);
+                    *proj =
+                        glm::perspective(width as f32 / height as f32, 45.0 * RADIANS, 0.1, 100.0);
+                },
+                _ => (),
             }
-            glfw::WindowEvent::FramebufferSize(width, height) => {
-                framebuffer_size_callback(width, height, proj)
-            }
-            _ => {}
+        }
+
+        if self.keys.get(&Key::W).is_some() {
+            self.camera.forward(speed)
+        }
+        if self.keys.get(&Key::S).is_some() {
+            self.camera.backwards(speed)
+        }
+        if self.keys.get(&Key::A).is_some() {
+            self.camera.left(speed)
+        }
+        if self.keys.get(&Key::D).is_some() {
+            self.camera.right(speed)
         }
     }
-}
 
-fn framebuffer_size_callback(width: i32, height: i32, proj: &mut Mat4) {
-    unsafe {
-        gl::Viewport(0, 0, width, height);
-        *proj = glm::perspective(width as f32 / height as f32, 45.0 * RADIANS, 0.1, 100.0);
+    fn should_close(&mut self) -> bool {
+        self.window.should_close()
+    }
+
+    fn swap_buffers(&mut self) {
+        self.window.swap_buffers()
+    }
+
+    fn view(&mut self) -> Mat4 {
+        self.camera.view()
     }
 }
 
 fn size_of(glenum: gl::types::GLenum) -> u32 {
     match glenum {
-        gl::FLOAT => 4,
+        gl::FLOAT => mem::size_of::<f32>() as u32,
         _ => unreachable!(),
     }
 }
