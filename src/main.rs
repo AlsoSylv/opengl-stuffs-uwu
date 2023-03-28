@@ -85,7 +85,7 @@ fn main() {
         ];
 
         #[rustfmt::skip]
-        let indices: [i32; 36] = [
+        let indicies: [i32; 36] = [
             0, 1, 3,  // Indexes of verts
             1, 2, 3,  // Indexes of verts
 
@@ -105,7 +105,9 @@ fn main() {
             11, 15, 3
         ];
 
-        let (vao, buffer, ind_size) = Buffer::create_shared_buffer(&verticies, &indices);
+        let ind_size = (indicies.len() * mem::size_of::<i32>()) as isize;
+
+        let (vao, buffer) = Buffer::create_shared_buffer(&verticies, &indicies, ind_size);
 
         let vao = VertexBuilder::default()
             .bind_buffers(vao, buffer, ind_size)

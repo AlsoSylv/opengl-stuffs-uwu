@@ -122,28 +122,21 @@ impl Buffer {
         }
     }
 
-    pub fn create_shared_buffer<A, B>(verticies: &[A], indicies: &[B]) -> (u32, u32, isize) {
+    pub fn create_shared_buffer<A, B>(verticies: &[A], indicies: &[B], ind_size: isize) -> (u32, u32) {
         unsafe {
             let mut alignment = 0;
             gl::GetIntegerv(gl::UNIFORM_BUFFER_OFFSET_ALIGNMENT, &mut alignment);
 
             let vao: u32 = 0;
 
-            let ind_size = (indicies.len() * mem::size_of::<B>()) as isize;
             let vrt_size = (verticies.len() * mem::size_of::<A>()) as isize;
 
             let buffer = Buffer::create(ind_size + vrt_size);
 
-            Buffer::named_buffer_sub_data(indicies, buffer, 0, ind_size);
-            Buffer::named_buffer_sub_data(verticies, buffer, ind_size, vrt_size);
+            gl::NamedBufferSubData(buffer, 0, ind_size, indicies.as_ptr() as *const c_void);
+            gl::NamedBufferSubData(buffer, ind_size, vrt_size, verticies.as_ptr() as *const c_void);
 
-            (vao, buffer, ind_size)
-        }
-    }
-
-    pub fn named_buffer_sub_data<T>(array: &[T], buffer: u32, offset: isize, size: isize) {
-        unsafe {
-            gl::NamedBufferSubData(buffer, offset, size, array.as_ptr() as *const c_void);
+            (vao, buffer)
         }
     }
 }
