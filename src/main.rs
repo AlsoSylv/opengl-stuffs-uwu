@@ -19,7 +19,7 @@ use opengl::gl;
 use buffers::{Buffer, Ubo, VertexBuilder};
 use camera::Camera;
 use shaders::Shader;
-use textures::TextureBuilder;
+use textures::{TextureBuilder, TextureManager};
 
 const VERTEX_SHADER_SOURCE: &str = "./resources/shaders/vertex.vert";
 
@@ -45,10 +45,12 @@ fn main() {
     window.set_key_polling(true);
     window.make_current();
     window.set_framebuffer_size_polling(true);
+    window.set_cursor_pos_polling(true);
 
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const c_void);
 
     let mut proj = glm::perspective(1280.0 / 720.0, 45.0 * RADIANS, 0.1, 100.0);
+    let (mut last_x, mut last_y) = (400.0, 300.0);
 
     // Modern OGL: https://github.com/fendevel/Guide-to-Modern-OpenGL-Functions#glnamedbufferdata
     // Learn OGL: https://learnopengl.com/
@@ -56,7 +58,7 @@ fn main() {
     // ECS: https://www.youtube.com/watch?v=aKLntZcp27M
     let shaders = Shader::new(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
     #[allow(unused_unsafe)]
-    let (program, vao, texture, texture_2, mut ubo) = unsafe {
+    let (program, vao, texture_manager, mut ubo) = unsafe {
         gl::Viewport(0, 0, 1280, 720);
 
         #[rustfmt::skip]
@@ -134,9 +136,13 @@ fn main() {
 
         let ubo = Ubo::new(shaders.id, "MatrixBlock", 3 * mem::size_of::<glm::Mat4>());
 
+        let mut texture_manager = TextureManager::new();
+        texture_manager.add_texture(texture);
+        texture_manager.add_texture(texture_2);
+
         gl::Enable(gl::DEPTH_TEST);
 
-        (shaders, vao, texture, texture_2, ubo)
+        (shaders, vao, texture_manager, ubo)
     };
 
     let cube_positions = [
@@ -162,32 +168,31 @@ fn main() {
         let delta = current_time - last_frame;
         last_frame = current_time;
 
-        app.handle_window_event(&mut proj, delta as f32);
+        app.handle_window_event(&mut proj, delta as f32, &mut last_x, &mut last_y);
 
         ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&proj));
         ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&app.view()));
 
+        app.clear();
+        ubo.bind();
+        texture_manager.bind_texutres(0);
+
         unsafe {
-            gl::ClearColor(0.2, 0.3, 0.3, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
-
-            ubo.bind();
-
-            gl::BindTextures(0, 2, [texture, texture_2].as_ptr());
-
             program.use_program();
             gl::BindVertexArray(vao);
-            for (x, position) in cube_positions.iter().enumerate() {
-                let mut model = glm::Mat4::identity();
-                model = glm::translate(&model, position);
-                let angle = 20.0 * x as f32;
-                model = glm::rotate(&model, angle * RADIANS, &glm::vec3(1.0, 0.3, 0.5));
-
-                ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&model));
-                gl::DrawElements(gl::TRIANGLES, 36, gl::UNSIGNED_INT, ptr::null());
-                ubo.reduce_offset::<glm::Mat4>();
-            }
         }
+
+        for (x, position) in cube_positions.iter().enumerate() {
+            let mut model = glm::Mat4::identity();
+            model = glm::translate(&model, position);
+            let angle = 20.0 * x as f32;
+            model = glm::rotate(&model, angle * RADIANS, &glm::vec3(1.0, 0.3, 0.5));
+
+            ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&model));
+            app.draw(36);
+            ubo.reduce_offset::<glm::Mat4>();
+        }
+
         ubo.clear();
 
         app.swap_buffers();
@@ -216,7 +221,13 @@ impl Application<'_> {
         }
     }
 
-    fn handle_window_event(&mut self, proj: &mut Mat4, delta: f32) {
+    fn handle_window_event(
+        &mut self,
+        proj: &mut Mat4,
+        delta: f32,
+        last_x: &mut f64,
+        last_y: &mut f64,
+    ) {
         let speed = delta * 2.5;
         for (_, events) in glfw::flush_messages(self.events) {
             match events {
@@ -230,27 +241,31 @@ impl Application<'_> {
                     }
                     _ => (),
                 },
-                glfw::WindowEvent::FramebufferSize(width, height) => unsafe {
-                    gl::Viewport(0, 0, width, height);
-                    *proj =
-                        glm::perspective(width as f32 / height as f32, 45.0 * RADIANS, 0.1, 100.0);
-                },
+
+                glfw::WindowEvent::FramebufferSize(width, height) => {
+                    unsafe {
+                        gl::Viewport(0, 0, width, height);
+                    }
+
+                    let width = width as f32;
+                    let height = height as f32;
+                    *proj = glm::perspective(width / height, 45.0 * RADIANS, 0.1, 100.0);
+                }
+                glfw::WindowEvent::CursorPos(x_pos, y_pos) => {
+                    const SENSATIVITY: f64 = 0.1;
+                    let x_offset = SENSATIVITY * (x_pos - *last_x);
+                    let y_offset = SENSATIVITY * (y_pos - *last_y);
+                    *last_x = x_pos;
+                    *last_y = y_pos;
+
+                    self.camera.update_pitch_yaw(x_offset, -y_offset);
+                    self.camera.check_pitch();
+                }
                 _ => (),
             }
         }
 
-        if self.keys.get(&Key::W).is_some() {
-            self.camera.forward(speed)
-        }
-        if self.keys.get(&Key::S).is_some() {
-            self.camera.backwards(speed)
-        }
-        if self.keys.get(&Key::A).is_some() {
-            self.camera.left(speed)
-        }
-        if self.keys.get(&Key::D).is_some() {
-            self.camera.right(speed)
-        }
+        self.key_presses(speed);
     }
 
     fn should_close(&mut self) -> bool {
@@ -264,11 +279,40 @@ impl Application<'_> {
     fn view(&mut self) -> Mat4 {
         self.camera.view()
     }
+
+    fn key_presses(&mut self, speed: f32) {
+        if self.keys.contains(&Key::W) {
+            self.camera.forward(speed)
+        }
+        if self.keys.contains(&Key::S) {
+            self.camera.backwards(speed)
+        }
+        if self.keys.contains(&Key::A) {
+            self.camera.left(speed)
+        }
+        if self.keys.contains(&Key::D) {
+            self.camera.right(speed)
+        }
+    }
+
+    fn draw(&self, count: i32) {
+        unsafe {
+            gl::DrawElements(gl::TRIANGLES, count, gl::UNSIGNED_INT, ptr::null());
+        }
+    }
+
+    fn clear(&self) {
+        unsafe {
+            gl::ClearColor(0.2, 0.3, 0.3, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+        }
+    }
 }
 
 fn size_of(glenum: gl::types::GLenum) -> u32 {
     match glenum {
         gl::FLOAT => mem::size_of::<f32>() as u32,
+        gl::INT => mem::size_of::<i32>() as u32,
         _ => unreachable!(),
     }
 }

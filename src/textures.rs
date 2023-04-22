@@ -75,3 +75,23 @@ impl TextureBuilder {
         self.texture
     }
 }
+
+pub(crate) struct TextureManager {
+    textures: Vec<u32>,
+}
+
+impl TextureManager {
+    pub fn new() -> TextureManager {
+        TextureManager {
+            textures: Vec::new(),
+        }
+    }
+
+    pub fn add_texture(&mut self, texture: u32) {
+        self.textures.push(texture);
+    }
+
+    pub fn bind_texutres(&self, first: u32) {
+        unsafe { gl::BindTextures(first, self.textures.len() as i32, self.textures.as_ptr()) }
+    }
+}
