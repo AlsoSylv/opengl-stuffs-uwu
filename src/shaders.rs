@@ -84,8 +84,10 @@ impl Shader {
         CString::from_vec_unchecked(buf)
     }
 
-    pub unsafe fn use_program(&self) {
-        gl::UseProgram(self.id);
+    pub fn use_program(&self) {
+        unsafe {
+            gl::UseProgram(self.id);
+        }
     }
 
     fn set_bool(&self, name: &str, value: bool) {

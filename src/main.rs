@@ -6,6 +6,7 @@ mod textures;
 use std::collections::HashSet;
 use std::f32::consts::PI;
 use std::ffi::c_void;
+use std::ops::Mul;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::{mem, ptr};
@@ -57,8 +58,10 @@ fn main() {
     // Learn OGL RS: https://github.com/bwasty/learn-opengl-rs
     // ECS: https://www.youtube.com/watch?v=aKLntZcp27M
     let shaders = Shader::new(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
+    let light_shader = Shader::new("./resources/shaders/light_vx.vert", "./resources/shaders/light_fx.frag");
+
     #[allow(unused_unsafe)]
-    let (program, vao, texture_manager, mut ubo) = unsafe {
+    let vao = unsafe {
         gl::Viewport(0, 0, 1280, 720);
 
         #[rustfmt::skip]
@@ -111,12 +114,23 @@ fn main() {
 
         let (vao, buffer) = Buffer::create_shared_buffer(&verticies, &indicies, ind_size);
 
+        let light_vao = Buffer::create((verticies.len() * mem::size_of::<f32>()).try_into().unwrap());
+
         let vao = VertexBuilder::default()
-            .bind_buffers(vao, buffer, ind_size)
+            .bind_buffers(vao, buffer, ind_size, light_vao)
             .attribute(3, gl::FLOAT)
             .attribute(2, gl::FLOAT)
+            .attribute(3, gl::FLOAT)
             .build();
 
+        gl::Enable(gl::DEPTH_TEST);
+
+        vao
+    };
+
+    let mut matrix_block = Ubo::new(shaders.id, "MatrixBlock", 3 * mem::size_of::<glm::Mat4>());
+
+    let texture_manager = {
         let img = image::open(Path::new("./resources/textures/wall.jpg")).unwrap();
         let img_2 = image::open(Path::new("./resources/textures/awesomeface.png")).unwrap();
 
@@ -134,15 +148,11 @@ fn main() {
             .sub_texture(0, 0)
             .build();
 
-        let ubo = Ubo::new(shaders.id, "MatrixBlock", 3 * mem::size_of::<glm::Mat4>());
-
         let mut texture_manager = TextureManager::new();
         texture_manager.add_texture(texture);
         texture_manager.add_texture(texture_2);
 
-        gl::Enable(gl::DEPTH_TEST);
-
-        (shaders, vao, texture_manager, ubo)
+        texture_manager
     };
 
     let cube_positions = [
@@ -157,6 +167,14 @@ fn main() {
         glm::vec3(1.5, 0.2, -1.5),
         glm::vec3(-1.3, 1.0, -1.5),
     ];
+
+    let light_color = glm::vec3(1.0f32, 1.0, 1.0);
+    let toy_color = glm::vec3(1.0f32, 0.5, 0.31);
+
+    let result = light_color.component_mul(&toy_color);
+
+    println!("{}", result);
+
     let mut last_frame = 0.0;
 
     let camera = Camera::new();
@@ -170,17 +188,15 @@ fn main() {
 
         app.handle_window_event(&mut proj, delta as f32, &mut last_x, &mut last_y);
 
-        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&proj));
-        ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&app.view()));
+        matrix_block.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&proj));
+        matrix_block.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&app.view()));
 
         app.clear();
-        ubo.bind();
+        matrix_block.bind();
         texture_manager.bind_texutres(0);
 
-        unsafe {
-            program.use_program();
-            gl::BindVertexArray(vao);
-        }
+        shaders.use_program();
+        app.bind_vao(vao);
 
         for (x, position) in cube_positions.iter().enumerate() {
             let mut model = glm::Mat4::identity();
@@ -188,15 +204,14 @@ fn main() {
             let angle = 20.0 * x as f32;
             model = glm::rotate(&model, angle * RADIANS, &glm::vec3(1.0, 0.3, 0.5));
 
-            ubo.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&model));
+            matrix_block.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&model));
             app.draw(36);
-            ubo.reduce_offset::<glm::Mat4>();
+            matrix_block.reduce_offset::<glm::Mat4>();
         }
 
-        ubo.clear();
+        matrix_block.clear();
 
-        app.swap_buffers();
-        glfw.poll_events();
+        app.finish_frame();
     }
 }
 
@@ -271,8 +286,9 @@ impl Application<'_> {
         self.window.should_close()
     }
 
-    fn swap_buffers(&mut self) {
-        self.window.swap_buffers()
+    fn finish_frame(&mut self) {
+        self.window.swap_buffers();
+        self.window.glfw.poll_events();
     }
 
     fn view(&mut self) -> Mat4 {
@@ -304,6 +320,12 @@ impl Application<'_> {
         unsafe {
             gl::ClearColor(0.2, 0.3, 0.3, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+        }
+    }
+
+    fn bind_vao(&self, vao: u32) {
+        unsafe {
+            gl::BindVertexArray(vao);
         }
     }
 }

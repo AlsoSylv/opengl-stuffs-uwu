@@ -15,10 +15,12 @@ pub struct VertexBuilder {
 }
 
 impl VertexBuilder {
-    pub fn bind_buffers(mut self, mut vao: u32, buffer: u32, size: isize) -> Self {
+    pub fn bind_buffers(mut self, mut vao: u32, buffer: u32, size: isize, mut light_vao: u32) -> Self {
         unsafe {
             gl::CreateVertexArrays(1, &mut vao);
+            gl::CreateVertexArrays(1, &mut light_vao);
             gl::VertexArrayVertexBuffer(vao, 0, buffer, size, 5 * size_of(gl::FLOAT) as i32);
+            gl::VertexArrayVertexBuffer(light_vao, 0, buffer, size, 5 * size_of(gl::FLOAT) as i32);
             gl::VertexArrayElementBuffer(vao, buffer);
             self.vao = vao;
             self
