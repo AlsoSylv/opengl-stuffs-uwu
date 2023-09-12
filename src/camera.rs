@@ -55,7 +55,10 @@ impl Camera {
         self.camera_pos += value.mul(speed)
     }
 
-    pub fn check_pitch(&mut self) {
+    pub fn update_camer_pos(&mut self, x_offset: f64, y_offset: f64) {
+        self.yaw = self.yaw + x_offset as f32;
+        self.pitch = self.pitch + y_offset as f32;
+
         if self.pitch > 89.0 {
             self.pitch = 89.0;
         }
@@ -68,11 +71,6 @@ impl Camera {
         self.direction.y = (self.pitch * RADIANS).sin();
         self.direction.z = (self.yaw * RADIANS).sin() * (self.pitch * RADIANS).cos();
         self.camera_front = glm::normalize(&self.direction);
-    }
-
-    pub fn update_pitch_yaw(&mut self, x_offset: f64, y_offset: f64) {
-        self.yaw = self.yaw + x_offset as f32;
-        self.pitch = self.pitch + y_offset as f32;
     }
 
     pub fn view(&mut self) -> glm::Mat4 {

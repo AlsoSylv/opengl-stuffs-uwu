@@ -258,8 +258,7 @@ impl Application<'_> {
                     *last_x = x_pos;
                     *last_y = y_pos;
 
-                    self.camera.update_pitch_yaw(x_offset, -y_offset);
-                    self.camera.check_pitch();
+                    self.camera.update_camer_pos(x_offset, -y_offset);
                 }
                 _ => (),
             }

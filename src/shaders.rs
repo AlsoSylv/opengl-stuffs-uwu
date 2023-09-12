@@ -12,37 +12,38 @@ impl Shader {
     pub fn new(v_shader_file: &str, f_shader_file: &str) -> Shader {
         let v_shader = fs::read_to_string(v_shader_file);
         let f_shader = fs::read_to_string(f_shader_file);
-        match v_shader {
-            Ok(v_shader) => match f_shader {
-                Ok(f_shader) => {
-                    let v_shader_code = CString::new(v_shader).unwrap();
-                    let f_shader_code = CString::new(f_shader).unwrap();
-                    unsafe {
-                        let vertex_shader: u32 = gl::CreateShader(gl::VERTEX_SHADER);
-                        Shader::compile_shader(vertex_shader, 1, v_shader_code);
 
-                        let fragment_shader: u32 = gl::CreateShader(gl::FRAGMENT_SHADER);
-                        Shader::compile_shader(fragment_shader, 1, f_shader_code);
+        let Ok(v_shader) = v_shader else {
+            panic!("Vertex Shader Error: {v_shader:?}")
+        };
 
-                        let id = gl::CreateProgram();
-                        gl::AttachShader(id, vertex_shader);
-                        gl::AttachShader(id, fragment_shader);
-                        gl::LinkProgram(id);
+        let Ok(f_shader) = f_shader else {
+            panic!("Fragment Shader Error: {f_shader:?}")
+        };
 
-                        if !Shader::get_success(id) {
-                            let log = Shader::get_info_log(id);
-                            println!("{log:?}");
-                        }
+        let v_shader_code = CString::new(v_shader).unwrap();
+        let f_shader_code = CString::new(f_shader).unwrap();
+        unsafe {
+            let vertex_shader: u32 = gl::CreateShader(gl::VERTEX_SHADER);
+            Shader::compile_shader(vertex_shader, 1, v_shader_code);
 
-                        gl::DeleteShader(fragment_shader);
-                        gl::DeleteShader(vertex_shader);
+            let fragment_shader: u32 = gl::CreateShader(gl::FRAGMENT_SHADER);
+            Shader::compile_shader(fragment_shader, 1, f_shader_code);
 
-                        Shader { id }
-                    }
-                }
-                Err(err) => panic!("Fragment Shader Error: {err}"),
-            },
-            Err(err) => panic!("Vertex Shader Error: {err}"),
+            let id = gl::CreateProgram();
+            gl::AttachShader(id, vertex_shader);
+            gl::AttachShader(id, fragment_shader);
+            gl::LinkProgram(id);
+
+            if !Shader::get_success(id) {
+                let log = Shader::get_info_log(id);
+                println!("{log:?}");
+            }
+
+            gl::DeleteShader(fragment_shader);
+            gl::DeleteShader(vertex_shader);
+
+            Shader { id }
         }
     }
 

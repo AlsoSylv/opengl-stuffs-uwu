@@ -1,6 +1,6 @@
 #version 450 core
-out vec4 FragColor;
 
+out vec4 FragColor;
 in vec2 TexCoord;
 
 layout (binding = 0) uniform sampler2D ourTexture;
