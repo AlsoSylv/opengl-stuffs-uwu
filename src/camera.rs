@@ -56,20 +56,17 @@ impl Camera {
     }
 
     pub fn update_camer_pos(&mut self, x_offset: f64, y_offset: f64) {
-        self.yaw = self.yaw + x_offset as f32;
-        self.pitch = self.pitch + y_offset as f32;
+        self.yaw += x_offset as f32;
+        self.pitch += y_offset as f32;
 
-        if self.pitch > 89.0 {
-            self.pitch = 89.0;
-        }
+        self.pitch = clamp(self.pitch, 89.0, -89.0);
 
-        if self.pitch < -89.0 {
-            self.pitch = -89.0;
-        }
+        let rads = self.pitch *RADIANS;
+        let yar = self.yaw * RADIANS;
 
-        self.direction.x = (self.yaw * RADIANS).cos() * (self.pitch * RADIANS).cos();
-        self.direction.y = (self.pitch * RADIANS).sin();
-        self.direction.z = (self.yaw * RADIANS).sin() * (self.pitch * RADIANS).cos();
+        self.direction.x = (yar).cos() * (rads).cos();
+        self.direction.y = (rads).sin();
+        self.direction.z = (yar).sin() * (rads).cos();
         self.camera_front = glm::normalize(&self.direction);
     }
 
@@ -80,4 +77,9 @@ impl Camera {
             &self.camera_up,
         )
     }
+}
+
+pub fn clamp<T>(val: T, max: T, min: T) -> T where T: PartialOrd<T> {
+    let t = if val < min { min } else { val };
+    if t > max { max } else { t }
 }

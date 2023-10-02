@@ -1,6 +1,7 @@
-#version 330 core
+#version 450 core
+
 out vec4 FragColor;
-  
+
 uniform vec3 objectColor;
 uniform vec3 lightColor;
 

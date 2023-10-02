@@ -1,7 +1,17 @@
-#version 330 core
+#version 450 core
+
+layout (location = 0) in vec3 aPos;
+
 out vec4 FragColor;
 
+layout(std140, binding = 0) uniform MatrixBlock {
+    mat4 projection;
+    mat4 view;
+    mat4 model;
+};
+
 void main()
-{
-    FragColor = vec4(1.0); // set all 4 vector values to 1.0
+{   
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    // FragColor = vec4(1.0); // set all 4 vector values to 1.0
 }

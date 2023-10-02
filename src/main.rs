@@ -5,15 +5,12 @@ mod textures;
 
 use std::collections::HashSet;
 use std::f32::consts::PI;
-use std::ffi::c_void;
-use std::ops::Mul;
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::{mem, ptr};
 
 use glfw::{Action, Context, Key};
-
-use glm::Mat4;
+use glm::{Mat4, Vec3};
 use nalgebra_glm as glm;
 use opengl::gl;
 
@@ -43,12 +40,13 @@ fn main() {
         .create_window(1280, 720, "Hello World", glfw::WindowMode::Windowed)
         .expect("Failed to create GLFW Window");
 
-    window.set_key_polling(true);
     window.make_current();
+
+    window.set_key_polling(true);
     window.set_framebuffer_size_polling(true);
     window.set_cursor_pos_polling(true);
 
-    gl::load_with(|symbol| window.get_proc_address(symbol) as *const c_void);
+    gl::load_with(|symbol| window.get_proc_address(symbol));
 
     let mut proj = glm::perspective(1280.0 / 720.0, 45.0 * RADIANS, 0.1, 100.0);
     let (mut last_x, mut last_y) = (400.0, 300.0);
@@ -58,77 +56,71 @@ fn main() {
     // Learn OGL RS: https://github.com/bwasty/learn-opengl-rs
     // ECS: https://www.youtube.com/watch?v=aKLntZcp27M
     let shaders = Shader::new(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
-    let light_shader = Shader::new("./resources/shaders/light_vx.vert", "./resources/shaders/light_fx.frag");
+    let light_shader = Shader::new(
+        "./resources/shaders/light_vx.vert",
+        "./resources/shaders/light_fx.frag",
+    );
 
-    #[allow(unused_unsafe)]
-    let vao = unsafe {
+    unsafe {
         gl::Viewport(0, 0, 1280, 720);
-
-        #[rustfmt::skip]
-        let verticies: [f32; 80] = [
-            // Positions      | Texture coords
-             0.5,  0.5, -0.5,  1.0, 1.0,  // 0
-             0.5, -0.5, -0.5,  1.0, 0.0,  // 1
-            -0.5, -0.5, -0.5,  0.0, 0.0,  // 2
-            -0.5,  0.5, -0.5,  0.0, 1.0,  // 3
-
-            -0.5,  0.5,  0.5,  1.0, 0.0,  // 4
-            -0.5,  0.5, -0.5,  1.0, 1.0,  // 5
-            -0.5, -0.5, -0.5,  0.0, 1.0,  // 6
-            -0.5, -0.5,  0.5,  0.0, 0.0,  // 7
-
-             0.5, -0.5,  0.5,  1.0, 0.0,  // 8
-             0.5,  0.5,  0.5,  1.0, 1.0,  // 9
-            -0.5,  0.5,  0.5,  0.0, 1.0,  // 10
-
-             0.5,  0.5,  0.5,  1.0, 0.0,  // 11
-             0.5, -0.5, -0.5,  0.0, 1.0,  // 12
-             0.5, -0.5,  0.5,  0.0, 0.0,  // 13
-
-             0.5, -0.5, -0.5,  1.0, 1.0,  // 14
-            -0.5,  0.5,  0.5,  0.0, 0.0,  // 15
-        ];
-
-        #[rustfmt::skip]
-        let indicies: [i32; 36] = [
-            0, 1, 3,  // Indexes of verts
-            1, 2, 3,  // Indexes of verts
-
-            4, 5, 6,
-            6, 7, 4,
-
-            7, 8, 9,
-            9, 10, 7,
-
-            11, 0, 12,
-            12, 13, 11,
-
-            6, 14, 8,
-            8, 7, 6,
-
-            3, 0, 11,
-            11, 15, 3
-        ];
-
-        let ind_size = (indicies.len() * mem::size_of::<i32>()) as isize;
-
-        let (vao, buffer) = Buffer::create_shared_buffer(&verticies, &indicies, ind_size);
-
-        let light_vao = Buffer::create((verticies.len() * mem::size_of::<f32>()).try_into().unwrap());
-
-        let vao = VertexBuilder::default()
-            .bind_buffers(vao, buffer, ind_size, light_vao)
-            .attribute(3, gl::FLOAT)
-            .attribute(2, gl::FLOAT)
-            .attribute(3, gl::FLOAT)
-            .build();
-
         gl::Enable(gl::DEPTH_TEST);
+    }
 
-        vao
-    };
+    #[rustfmt::skip]
+    let verticies: [f32; 80] = [
+        // Positions      | Texture coords
+         0.5,  0.5, -0.5,  1.0, 1.0,  // 0
+         0.5, -0.5, -0.5,  1.0, 0.0,  // 1
+        -0.5, -0.5, -0.5,  0.0, 0.0,  // 2
+        -0.5,  0.5, -0.5,  0.0, 1.0,  // 3
 
-    let mut matrix_block = Ubo::new(shaders.id, "MatrixBlock", 3 * mem::size_of::<glm::Mat4>());
+        -0.5,  0.5,  0.5,  1.0, 0.0,  // 4
+        -0.5,  0.5, -0.5,  1.0, 1.0,  // 5
+        -0.5, -0.5, -0.5,  0.0, 1.0,  // 6
+        -0.5, -0.5,  0.5,  0.0, 0.0,  // 7
+
+         0.5, -0.5,  0.5,  1.0, 0.0,  // 8
+         0.5,  0.5,  0.5,  1.0, 1.0,  // 9
+        -0.5,  0.5,  0.5,  0.0, 1.0,  // 10
+
+         0.5,  0.5,  0.5,  1.0, 0.0,  // 11
+         0.5, -0.5, -0.5,  0.0, 1.0,  // 12
+         0.5, -0.5,  0.5,  0.0, 0.0,  // 13
+
+         0.5, -0.5, -0.5,  1.0, 1.0,  // 14
+        -0.5,  0.5,  0.5,  0.0, 0.0,  // 15
+    ];
+
+    #[rustfmt::skip]
+    let indicies: [i32; 36] = [
+        0, 1, 3,  // Indexes of verts
+        1, 2, 3,  // Indexes of verts
+
+        4, 5, 6,
+        6, 7, 4,
+
+        7, 8, 9,
+        9, 10, 7,
+
+        11, 0, 12,
+        12, 13, 11,
+
+        6, 14, 8,
+        8, 7, 6,
+
+        3, 0, 11,
+        11, 15, 3
+    ];
+
+    let buffer = Buffer::create_shared_buffer(&verticies, &indicies);
+
+    let mut vao = 0;
+    let mut light_vao = 0;
+
+    VertexBuilder::bind_buffers(buffer, &indicies, &mut vao, &mut light_vao)
+        .attribute(3, gl::FLOAT)
+        .attribute(2, gl::FLOAT)
+        .attribute(3, gl::FLOAT);
 
     let texture_manager = {
         let img = image::open(Path::new("./resources/textures/wall.jpg")).unwrap();
@@ -181,6 +173,12 @@ fn main() {
 
     let mut app = Application::new(&mut window, &events, camera);
 
+    let mut matrix_block = Ubo::new(3 * mem::size_of::<glm::Mat4>());
+    matrix_block.attach_new_shader(&shaders, "MatrixBlock");
+    matrix_block.attach_new_shader(&light_shader, "MatrixBlock");
+    matrix_block.bind();
+    texture_manager.bind_texutres(0);
+
     while !app.should_close() {
         let current_time = glfw.get_time();
         let delta = current_time - last_frame;
@@ -192,21 +190,35 @@ fn main() {
         matrix_block.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&app.view()));
 
         app.clear();
-        matrix_block.bind();
-        texture_manager.bind_texutres(0);
-
         shaders.use_program();
         app.bind_vao(vao);
 
         for (x, position) in cube_positions.iter().enumerate() {
             let mut model = glm::Mat4::identity();
-            model = glm::translate(&model, position);
             let angle = 20.0 * x as f32;
+
+            model = glm::translate(&model, position);
             model = glm::rotate(&model, angle * RADIANS, &glm::vec3(1.0, 0.3, 0.5));
 
-            matrix_block.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&model));
+            matrix_block.next_attribute_reduced::<glm::Mat4, f32>(glm::value_ptr(&model));
             app.draw(36);
-            matrix_block.reduce_offset::<glm::Mat4>();
+        }
+
+        light_shader.use_program();
+        app.bind_vao(light_vao);
+
+        light_shader.set_vec3("objectColor", 1, &Vec3::new(1.0, 0.5, 0.31));
+        light_shader.set_vec3("lightColor", 1, &Vec3::new(1.0, 1.0, 1.0));
+
+        for (x, position) in cube_positions.iter().enumerate() {
+            let mut model = glm::Mat4::identity();
+            let angle = 20.0 * x as f32;
+
+            model = glm::translate(&model, position);
+            model = glm::rotate(&model, angle * RADIANS, &glm::vec3(1.0, 0.3, 0.5));
+
+            matrix_block.next_attribute_reduced::<glm::Mat4, f32>(glm::value_ptr(&model));
+            app.draw(36);
         }
 
         matrix_block.clear();

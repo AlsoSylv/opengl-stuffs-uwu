@@ -1,6 +1,7 @@
 use std::ffi::{c_char, CString};
 use std::{fs, ptr};
 
+use nalgebra_glm::Vec3;
 use opengl::gl;
 
 pub struct Shader {
@@ -90,6 +91,16 @@ impl Shader {
         }
     }
 
+    pub fn get_uniform_block_index(&self, ubo_name: &CString) -> u32 {
+        unsafe { gl::GetUniformBlockIndex(self.id, ubo_name.as_ptr()) }
+    }
+
+    pub fn uniform_block_binding(&self, ubo_index: u32) {
+        unsafe {
+            gl::UniformBlockBinding(self.id, ubo_index, 0);
+        }
+    }
+
     fn set_bool(&self, name: &str, value: bool) {
         self.set_int(name, value as i32)
     }
@@ -105,6 +116,13 @@ impl Shader {
         unsafe {
             let location = self.uniform_location(name);
             gl::Uniform1f(location, value)
+        }
+    }
+
+    pub fn set_vec3(&self, name: &str, count: i32, value: &Vec3) {
+        unsafe {
+            let location = self.uniform_location(name);
+            gl::Uniform3fv(location, count, value.as_ptr())
         }
     }
 
