@@ -211,10 +211,13 @@ fn main() {
         light_shader.set_vec3("lightColor", 1, &Vec3::new(1.0, 1.0, 1.0));
 
         for (x, position) in cube_positions.iter().enumerate() {
+            let light_pos = glm::vec3(1.2, 1.0, 2.0);
             let mut model = glm::Mat4::identity();
             let angle = 20.0 * x as f32;
 
-            model = glm::translate(&model, position);
+            model = glm::translate(&model, &position);
+            model = glm::translate(&model, &light_pos);
+            model = glm::scale(&model, &glm::vec3(0.2, 0.2, 0.2));
             model = glm::rotate(&model, angle * RADIANS, &glm::vec3(1.0, 0.3, 0.5));
 
             matrix_block.next_attribute_reduced::<glm::Mat4, f32>(glm::value_ptr(&model));

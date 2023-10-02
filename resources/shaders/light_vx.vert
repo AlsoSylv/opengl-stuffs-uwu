@@ -2,8 +2,6 @@
 
 layout (location = 0) in vec3 aPos;
 
-out vec4 FragColor;
-
 layout(std140, binding = 0) uniform MatrixBlock {
     mat4 projection;
     mat4 view;
