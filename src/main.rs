@@ -14,17 +14,22 @@ use glm::{Mat4, Vec3};
 use nalgebra_glm as glm;
 use opengl::gl;
 
-use buffers::{Buffer, Ubo, VertexBuilder};
+use buffers::{Buffer, UBO, VertexBuilder};
 use camera::Camera;
 use shaders::Shader;
 use textures::{TextureBuilder, TextureManager};
 
 const VERTEX_SHADER_SOURCE: &str = "./resources/shaders/vertex.vert";
-
 const FRAGMENT_SHADER_SOURCE: &str = "./resources/shaders/fragment.frag";
 
 #[allow(dead_code)]
 const RADIANS: f32 = PI / 180.0;
+
+fn gl_enable(cap: gl::types::GLenum) {
+    unsafe {
+        gl::Enable(cap)
+    }
+}
 
 fn main() {
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
@@ -60,11 +65,6 @@ fn main() {
         "./resources/shaders/light_vx.vert",
         "./resources/shaders/light_fx.frag",
     );
-
-    unsafe {
-        gl::Viewport(0, 0, 1280, 720);
-        gl::Enable(gl::DEPTH_TEST);
-    }
 
     #[rustfmt::skip]
     let verticies: [f32; 80] = [
@@ -111,6 +111,12 @@ fn main() {
         3, 0, 11,
         11, 15, 3
     ];
+
+    unsafe {
+        gl::Viewport(0, 0, 1280, 720);
+    }
+
+    gl_enable(gl::DEPTH_TEST);
 
     let buffer = Buffer::create_shared_buffer(&verticies, &indicies);
 
@@ -160,20 +166,13 @@ fn main() {
         glm::vec3(-1.3, 1.0, -1.5),
     ];
 
-    let light_color = glm::vec3(1.0f32, 1.0, 1.0);
-    let toy_color = glm::vec3(1.0f32, 0.5, 0.31);
-
-    let result = light_color.component_mul(&toy_color);
-
-    println!("{}", result);
-
     let mut last_frame = 0.0;
 
     let camera = Camera::new();
 
     let mut app = Application::new(&mut window, &events, camera);
 
-    let mut matrix_block = Ubo::new(3 * mem::size_of::<glm::Mat4>());
+    let mut matrix_block = UBO::new(3 * mem::size_of::<glm::Mat4>());
     matrix_block.attach_new_shader(&shaders, "MatrixBlock");
     matrix_block.attach_new_shader(&light_shader, "MatrixBlock");
     matrix_block.bind();

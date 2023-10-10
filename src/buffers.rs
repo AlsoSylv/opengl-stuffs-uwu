@@ -77,18 +77,18 @@ impl VertexBuilder<'_> {
     }
 }
 
-pub struct Ubo {
+pub struct UBO {
     ubo: Buffer,
     offset: isize,
     size: isize,
 }
 
-impl Ubo {
-    pub fn new(size: usize) -> Ubo {
+impl UBO {
+    pub fn new(size: usize) -> UBO {
         let size = size as isize;
         let ubo = Buffer::create(size);
 
-        Ubo {
+        UBO {
             ubo,
             offset: 0,
             size,
