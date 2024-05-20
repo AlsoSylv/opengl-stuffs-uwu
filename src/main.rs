@@ -14,7 +14,7 @@ use glm::{Mat4, Vec3};
 use nalgebra_glm as glm;
 use opengl::gl;
 
-use buffers::{Buffer, UBO, VertexBuilder};
+use buffers::{Buffer, VertexBuilder, UBO};
 use camera::Camera;
 use shaders::Shader;
 use textures::{TextureBuilder, TextureManager};
@@ -26,9 +26,7 @@ const FRAGMENT_SHADER_SOURCE: &str = "./resources/shaders/fragment.frag";
 const RADIANS: f32 = PI / 180.0;
 
 fn gl_enable(cap: gl::types::GLenum) {
-    unsafe {
-        gl::Enable(cap)
-    }
+    unsafe { gl::Enable(cap) }
 }
 
 fn main() {
@@ -54,7 +52,6 @@ fn main() {
     gl::load_with(|symbol| window.get_proc_address(symbol));
 
     let mut proj = glm::perspective(1280.0 / 720.0, 45.0 * RADIANS, 0.1, 100.0);
-    let (mut last_x, mut last_y) = (400.0, 300.0);
 
     // Modern OGL: https://github.com/fendevel/Guide-to-Modern-OpenGL-Functions#glnamedbufferdata
     // Learn OGL: https://learnopengl.com/
@@ -67,49 +64,18 @@ fn main() {
     );
 
     #[rustfmt::skip]
-    let verticies: [f32; 80] = [
+    let vertices: [f32; 20] = [
         // Positions      | Texture coords
-         0.5,  0.5, -0.5,  1.0, 1.0,  // 0
-         0.5, -0.5, -0.5,  1.0, 0.0,  // 1
-        -0.5, -0.5, -0.5,  0.0, 0.0,  // 2
-        -0.5,  0.5, -0.5,  0.0, 1.0,  // 3
-
-        -0.5,  0.5,  0.5,  1.0, 0.0,  // 4
-        -0.5,  0.5, -0.5,  1.0, 1.0,  // 5
-        -0.5, -0.5, -0.5,  0.0, 1.0,  // 6
-        -0.5, -0.5,  0.5,  0.0, 0.0,  // 7
-
-         0.5, -0.5,  0.5,  1.0, 0.0,  // 8
-         0.5,  0.5,  0.5,  1.0, 1.0,  // 9
-        -0.5,  0.5,  0.5,  0.0, 1.0,  // 10
-
-         0.5,  0.5,  0.5,  1.0, 0.0,  // 11
-         0.5, -0.5, -0.5,  0.0, 1.0,  // 12
-         0.5, -0.5,  0.5,  0.0, 0.0,  // 13
-
-         0.5, -0.5, -0.5,  1.0, 1.0,  // 14
-        -0.5,  0.5,  0.5,  0.0, 0.0,  // 15
+         0.25,  0.25, -0.25,  1.0, 1.0,  // 0
+         0.25, -0.25, -0.25,  1.0, 0.0,  // 1
+        -0.25, -0.25, -0.25,  0.0, 0.0,  // 2
+        -0.25,  0.25, -0.25,  0.0, 1.0,  // 3
     ];
 
     #[rustfmt::skip]
-    let indicies: [i32; 36] = [
+    let indices: [i32; 6] = [
         0, 1, 3,  // Indexes of verts
         1, 2, 3,  // Indexes of verts
-
-        4, 5, 6,
-        6, 7, 4,
-
-        7, 8, 9,
-        9, 10, 7,
-
-        11, 0, 12,
-        12, 13, 11,
-
-        6, 14, 8,
-        8, 7, 6,
-
-        3, 0, 11,
-        11, 15, 3
     ];
 
     unsafe {
@@ -118,12 +84,11 @@ fn main() {
 
     gl_enable(gl::DEPTH_TEST);
 
-    let buffer = Buffer::create_shared_buffer(&verticies, &indicies);
+    let buffer = Buffer::create_shared_buffer(&vertices, &indices);
 
     let mut vao = 0;
-    let mut light_vao = 0;
 
-    VertexBuilder::bind_buffers(buffer, &indicies, &mut vao, &mut light_vao)
+    VertexBuilder::bind_buffers(buffer, &indices, &mut vao)
         .attribute(3, gl::FLOAT)
         .attribute(2, gl::FLOAT)
         .attribute(3, gl::FLOAT);
@@ -133,10 +98,10 @@ fn main() {
         let img_2 = image::open(Path::new("./resources/textures/awesomeface.png")).unwrap();
 
         let texture = TextureBuilder::new(img, gl::RGB, gl::RGB8)
-            .texture_paramater_i(gl::TEXTURE_WRAP_S, gl::MIRRORED_REPEAT)
-            .texture_paramater_i(gl::TEXTURE_WRAP_T, gl::MIRRORED_REPEAT)
-            .texture_paramater_i(gl::TEXTURE_MIN_FILTER, gl::NEAREST)
-            .texture_paramater_i(gl::TEXTURE_MAG_FILTER, gl::LINEAR)
+            .texture_parameter_i(gl::TEXTURE_WRAP_S, gl::MIRRORED_REPEAT)
+            .texture_parameter_i(gl::TEXTURE_WRAP_T, gl::MIRRORED_REPEAT)
+            .texture_parameter_i(gl::TEXTURE_MIN_FILTER, gl::NEAREST)
+            .texture_parameter_i(gl::TEXTURE_MAG_FILTER, gl::LINEAR)
             .texture_storage(1)
             .sub_texture(0, 0)
             .build();
@@ -153,17 +118,14 @@ fn main() {
         texture_manager
     };
 
-    let cube_positions = [
-        glm::vec3(0.0, 0.0, 0.0),
-        glm::vec3(2.0, 5.0, -15.0),
-        glm::vec3(-1.5, -2.2, -2.5),
-        glm::vec3(-3.8, -2.0, -12.3),
-        glm::vec3(2.4, -0.4, -3.5),
-        glm::vec3(-1.7, 3.0, -7.5),
-        glm::vec3(1.3, -2.0, -2.5),
-        glm::vec3(1.5, 2.0, -2.5),
-        glm::vec3(1.5, 0.2, -1.5),
-        glm::vec3(-1.3, 1.0, -1.5),
+    let cubes = [
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
     ];
 
     let mut last_frame = 0.0;
@@ -176,56 +138,59 @@ fn main() {
     matrix_block.attach_new_shader(&shaders, "MatrixBlock");
     matrix_block.attach_new_shader(&light_shader, "MatrixBlock");
     matrix_block.bind();
-    texture_manager.bind_texutres(0);
+    texture_manager.bind_textures(0);
+
+    let player_pos = Vec3::new(0.0, 0.0, 0.0);
 
     while !app.should_close() {
         let current_time = glfw.get_time();
         let delta = current_time - last_frame;
         last_frame = current_time;
 
-        app.handle_window_event(&mut proj, delta as f32, &mut last_x, &mut last_y);
+        app.handle_window_event(&mut proj, delta as f32);
 
-        matrix_block.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&proj));
-        matrix_block.next_attribute::<glm::Mat4, f32>(glm::value_ptr(&app.view()));
+        matrix_block.next_attribute(&proj);
+        matrix_block.next_attribute(&app.view());
 
         app.clear();
         shaders.use_program();
         app.bind_vao(vao);
 
-        for (x, position) in cube_positions.iter().enumerate() {
-            let mut model = glm::Mat4::identity();
-            let angle = 20.0 * x as f32;
+        let cubes = &cubes[player_pos.x as usize..player_pos.x as usize + 5];
 
-            model = glm::translate(&model, position);
-            model = glm::rotate(&model, angle * RADIANS, &glm::vec3(1.0, 0.3, 0.5));
+        cubes.iter().enumerate().for_each(|(index, sub_cubes)| {
+            let index_isize = index as isize - 2;
+            let x = index_isize as f32 * 0.5;
 
-            matrix_block.next_attribute_reduced::<glm::Mat4, f32>(glm::value_ptr(&model));
-            app.draw(36);
-        }
+            let sub_cubes = &sub_cubes[player_pos.y as usize..player_pos.y as usize + 5];
 
-        light_shader.use_program();
-        app.bind_vao(light_vao);
+            sub_cubes.iter().enumerate().for_each(|(index, _)| {
+                let index_isize = index as isize - 2;
+                let y = index_isize as f32 * 0.5;
 
-        light_shader.set_vec3("objectColor", 1, &Vec3::new(1.0, 0.5, 0.31));
-        light_shader.set_vec3("lightColor", 1, &Vec3::new(1.0, 1.0, 1.0));
+                let mut model = glm::Mat4::identity();
 
-        for (x, position) in cube_positions.iter().enumerate() {
-            let light_pos = glm::vec3(1.2, 1.0, 2.0);
-            let mut model = glm::Mat4::identity();
-            let angle = 20.0 * x as f32;
+                let position = Vec3::new(x, y, 0.0);
 
-            model = glm::translate(&model, &position);
-            model = glm::translate(&model, &light_pos);
-            model = glm::scale(&model, &glm::vec3(0.2, 0.2, 0.2));
-            model = glm::rotate(&model, angle * RADIANS, &glm::vec3(1.0, 0.3, 0.5));
+                model = glm::translate(&model, &position);
+                matrix_block.next_attribute_reduced(&model);
 
-            matrix_block.next_attribute_reduced::<glm::Mat4, f32>(glm::value_ptr(&model));
-            app.draw(36);
-        }
+                app.draw(6);
+            });
+        });
 
         matrix_block.clear();
-
         app.finish_frame();
+    }
+}
+
+pub fn clamp(value: usize, min: usize, max: usize) -> usize {
+    if value < min {
+        min
+    } else if value > max {
+        max
+    } else {
+        value
     }
 }
 
@@ -254,8 +219,6 @@ impl Application<'_> {
         &mut self,
         proj: &mut Mat4,
         delta: f32,
-        last_x: &mut f64,
-        last_y: &mut f64,
     ) {
         let speed = delta * 2.5;
         for (_, events) in glfw::flush_messages(self.events) {
@@ -280,14 +243,8 @@ impl Application<'_> {
                     let height = height as f32;
                     *proj = glm::perspective(width / height, 45.0 * RADIANS, 0.1, 100.0);
                 }
-                glfw::WindowEvent::CursorPos(x_pos, y_pos) => {
-                    const SENSATIVITY: f64 = 0.1;
-                    let x_offset = SENSATIVITY * (x_pos - *last_x);
-                    let y_offset = SENSATIVITY * (y_pos - *last_y);
-                    *last_x = x_pos;
-                    *last_y = y_pos;
+                glfw::WindowEvent::CursorPos(_, _) => {
 
-                    self.camera.update_camer_pos(x_offset, -y_offset);
                 }
                 _ => (),
             }
@@ -311,10 +268,12 @@ impl Application<'_> {
 
     fn key_presses(&mut self, speed: f32) {
         if self.keys.contains(&Key::W) {
-            self.camera.forward(speed)
+            self.camera.forward(speed);
+            self.keys.remove(&Key::W);
         }
         if self.keys.contains(&Key::S) {
-            self.camera.backwards(speed)
+            self.camera.backwards(speed);
+            self.keys.remove(&Key::S);
         }
         if self.keys.contains(&Key::A) {
             self.camera.left(speed)

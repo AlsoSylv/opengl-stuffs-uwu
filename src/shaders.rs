@@ -1,8 +1,9 @@
 use std::ffi::{c_char, CString};
 use std::{fs, ptr};
 
-use nalgebra_glm::Vec3;
 use opengl::gl;
+
+use self::sealed::{UniformValue, UniformValueTranspose};
 
 pub struct Shader {
     pub id: u32,
@@ -101,48 +102,80 @@ impl Shader {
         }
     }
 
-    fn set_bool(&self, name: &str, value: bool) {
-        self.set_int(name, value as i32)
+    pub fn set_uniform(&self, name: &str, value: impl UniformValue) {
+        value.set(self, name);
     }
 
-    pub fn set_int(&self, name: &str, value: i32) {
-        unsafe {
-            let location = self.uniform_location(name);
-            gl::Uniform1i(location, value)
-        }
-    }
-
-    pub fn set_float(&self, name: &str, value: f32) {
-        unsafe {
-            let location = self.uniform_location(name);
-            gl::Uniform1f(location, value)
-        }
-    }
-
-    pub fn set_vec3(&self, name: &str, count: i32, value: &Vec3) {
-        unsafe {
-            let location = self.uniform_location(name);
-            gl::Uniform3fv(location, count, value.as_ptr())
-        }
-    }
-
-    pub fn uniform_matrix_4fv(
+    pub fn set_uniform_transpose(
         &self,
         name: &str,
-        count: i32,
-        transpose: gl::types::GLboolean,
-        value: *const f32,
+        value: impl UniformValueTranspose,
+        transpose: bool,
     ) {
-        unsafe {
-            let location = self.uniform_location(name);
-            gl::UniformMatrix4fv(location, count, transpose, value);
-        }
+        value.set(self, name, transpose);
     }
 
     fn uniform_location(&self, name: &str) -> i32 {
         unsafe {
             let name = CString::new(name).unwrap();
             gl::GetUniformLocation(self.id, name.as_ptr())
+        }
+    }
+}
+
+mod sealed {
+    use nalgebra_glm::{TMat, Vec3};
+    use opengl::gl;
+
+    use super::Shader;
+
+    pub trait UniformValue: Sized {
+        fn set(self, shader: &Shader, name: &str);
+    }
+
+    impl UniformValue for f32 {
+        fn set(self, shader: &Shader, name: &str) {
+            unsafe {
+                let location = shader.uniform_location(name);
+                gl::Uniform1f(location, self)
+            }
+        }
+    }
+
+    impl UniformValue for i32 {
+        fn set(self, shader: &Shader, name: &str) {
+            unsafe {
+                let location = shader.uniform_location(name);
+                gl::Uniform1i(location, self)
+            }
+        }
+    }
+
+    impl UniformValue for bool {
+        fn set(self, shader: &Shader, name: &str) {
+            (self as i32).set(shader, name);
+        }
+    }
+
+    impl UniformValue for &Vec3 {
+        fn set(self, shader: &Shader, name: &str) {
+            unsafe {
+                let location = shader.uniform_location(name);
+                gl::Uniform3fv(location, self.len() as i32, self.as_ptr())
+            }
+        }
+    }
+
+    pub trait UniformValueTranspose: Sized {
+        fn set(self, shader: &Shader, name: &str, transpose: bool);
+    }
+
+    impl<const R: usize, const C: usize> UniformValueTranspose for TMat<f32, R, C> {
+        fn set(self, shader: &Shader, name: &str, transpose: bool) {
+            unsafe {
+                let location = shader.uniform_location(name);
+                gl::UniformMatrix4fv(location, self.len() as i32, transpose as u8, self.as_ptr());
+            }
         }
     }
 }

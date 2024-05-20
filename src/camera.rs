@@ -30,11 +30,11 @@ impl Camera {
     }
 
     pub fn forward(&mut self, speed: f32) {
-        self.add(self.camera_front, speed)
+        self.camera_pos.y += 0.5;
     }
 
     pub fn backwards(&mut self, speed: f32) {
-        self.camera_pos -= self.camera_front.mul(speed)
+        self.camera_pos.y -= 0.5;
     }
 
     pub fn left(&mut self, speed: f32) {
@@ -53,7 +53,7 @@ impl Camera {
         self.camera_pos += value.mul(speed)
     }
 
-    pub fn update_camer_pos(&mut self, x_offset: f64, y_offset: f64) {
+    pub fn update_camera_pos(&mut self, x_offset: f64, y_offset: f64) {
         self.yaw += x_offset as f32;
         self.pitch += y_offset as f32;
 

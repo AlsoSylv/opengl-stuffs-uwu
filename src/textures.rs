@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+use std::{ffi::c_void, ops::Index};
 
 use image::DynamicImage;
 use opengl::gl;
@@ -59,7 +59,7 @@ impl TextureBuilder {
         }
     }
 
-    pub fn texture_paramater_i(self, p_name: gl::types::GLenum, param: gl::types::GLenum) -> Self {
+    pub fn texture_parameter_i(self, p_name: gl::types::GLenum, param: gl::types::GLenum) -> Self {
         unsafe {
             gl::TextureParameteri(self.texture, p_name, param as i32);
             self
@@ -91,7 +91,15 @@ impl TextureManager {
         self.textures.push(texture);
     }
 
-    pub fn bind_texutres(&self, first: u32) {
+    pub fn bind_textures(&self, first: u32) {
         unsafe { gl::BindTextures(first, self.textures.len() as i32, self.textures.as_ptr()) }
+    }
+}
+
+impl Index<usize> for TextureManager {
+    type Output = u32;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.textures[index]
     }
 }
